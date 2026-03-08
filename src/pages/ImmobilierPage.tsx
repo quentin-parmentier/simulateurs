@@ -91,6 +91,7 @@ function calculateResults(inputs: SimulatorInputs) {
   const totalInterets = mensualiteCredit * dureeCredit * 12 - montantEmprunte
 
   const loyerAnnuel = loyerMensuel * 12
+  // 4.33 = average weeks per month (52 weeks / 12 months)
   const vacanceLocativeCout = loyerMensuel * vacanceLocative / 52 * 4.33
   const fraisGestionCout = loyerAnnuel * fraisGestion / 100
   const chargesAnnuelles = taxeFonciere + chargesCopro * 12 + assurancePNO + entretien + vacanceLocativeCout + fraisGestionCout
@@ -231,6 +232,7 @@ export default function ImmobilierPage() {
   }, [])
 
   const cashFlowVariant = results.cashFlowMensuel > 0 ? 'positive' : results.cashFlowMensuel > -100 ? 'warning' : 'negative'
+  const coutTotalInputs = inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement
 
   return (
     <div className="min-h-screen bg-background">
@@ -273,7 +275,7 @@ export default function ImmobilierPage() {
                       onChange={e => handlePrixChange(parseFloat(e.target.value) || 0)}
                       step={1000}
                       min={0}
-                      className="pr-8 text-base font-semibold h-11 text-lg"
+                      className="pr-8 font-semibold h-11 text-lg"
                     />
                     <span className="absolute right-3 text-sm text-muted-foreground pointer-events-none">€</span>
                   </div>
@@ -301,7 +303,7 @@ export default function ImmobilierPage() {
                   onChange={updateField('apport')}
                   suffix="€"
                   step={1000}
-                  hint={`${(inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement) > 0 ? ((inputs.apport / (inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement)) * 100).toFixed(1) : '0'}% du coût total`}
+                  hint={`${coutTotalInputs > 0 ? ((inputs.apport / coutTotalInputs) * 100).toFixed(1) : '0'}% du coût total`}
                 />
                 <Field label="Taux du crédit (%)" value={inputs.tauxCredit} onChange={updateField('tauxCredit')} suffix="%" step={0.05} />
                 <Field label="Durée du crédit (ans)" value={inputs.dureeCredit} onChange={updateField('dureeCredit')} suffix="ans" min={1} />
@@ -324,7 +326,7 @@ export default function ImmobilierPage() {
                   onChange={updateField('loyerMensuel')}
                   suffix="€/mois"
                   step={10}
-                  hint={`Rendement brut indicatif : ${(inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement) > 0 ? ((inputs.loyerMensuel * 12 / (inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement)) * 100).toFixed(2) : '0.00'}%`}
+                  hint={`Rendement brut indicatif : ${coutTotalInputs > 0 ? ((inputs.loyerMensuel * 12 / coutTotalInputs) * 100).toFixed(2) : '0.00'}%`}
                 />
                 <div className="space-y-1.5">
                   <Label className="text-xs text-muted-foreground">Type de location</Label>
