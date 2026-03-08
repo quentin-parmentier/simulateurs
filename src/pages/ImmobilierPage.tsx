@@ -73,6 +73,9 @@ function getDefaults(prix: number, locationType: LocationType = 'meublee'): Simu
   }
 }
 
+const WEEKS_PER_MONTH = 52 / 12
+const CASH_FLOW_WARNING_THRESHOLD = -100
+
 function calculateMensualite(capital: number, tauxAnnuel: number, dureeAns: number): number {
   if (capital <= 0 || tauxAnnuel <= 0 || dureeAns <= 0) return 0
   const t = tauxAnnuel / 100 / 12
@@ -91,8 +94,7 @@ function calculateResults(inputs: SimulatorInputs) {
   const totalInterets = mensualiteCredit * dureeCredit * 12 - montantEmprunte
 
   const loyerAnnuel = loyerMensuel * 12
-  // 4.33 = average weeks per month (52 weeks / 12 months)
-  const vacanceLocativeCout = loyerMensuel * vacanceLocative / 52 * 4.33
+  const vacanceLocativeCout = loyerMensuel * vacanceLocative / 52 * WEEKS_PER_MONTH
   const fraisGestionCout = loyerAnnuel * fraisGestion / 100
   const chargesAnnuelles = taxeFonciere + chargesCopro * 12 + assurancePNO + entretien + vacanceLocativeCout + fraisGestionCout
 
@@ -231,7 +233,7 @@ export default function ImmobilierPage() {
     setInputs(prev => getDefaults(prix, prev.locationType))
   }, [])
 
-  const cashFlowVariant = results.cashFlowMensuel > 0 ? 'positive' : results.cashFlowMensuel > -100 ? 'warning' : 'negative'
+  const cashFlowVariant = results.cashFlowMensuel > 0 ? 'positive' : results.cashFlowMensuel > CASH_FLOW_WARNING_THRESHOLD ? 'warning' : 'negative'
   const coutTotalInputs = inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement
 
   return (
