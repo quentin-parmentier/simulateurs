@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -162,14 +162,36 @@ interface FieldProps {
 }
 
 function Field({ label, value, onChange, suffix, step = 1, min = 0, hint }: FieldProps) {
+  const [displayValue, setDisplayValue] = useState<string>(String(value ?? ''))
+
+  useEffect(() => {
+    setDisplayValue(String(value))
+  }, [value])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    setDisplayValue(raw)
+    const parsed = parseFloat(raw)
+    if (!isNaN(parsed)) {
+      onChange(parsed)
+    }
+  }
+
+  const handleBlur = () => {
+    if (displayValue === '' || isNaN(parseFloat(displayValue))) {
+      setDisplayValue(String(value))
+    }
+  }
+
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <div className="relative flex items-center">
         <Input
           type="number"
-          value={value}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          value={displayValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
           step={step}
           min={min}
           className="pr-10 text-sm h-9"
@@ -222,6 +244,11 @@ function KPICard({ title, value, subtitle, variant = 'default', icon }: KPICardP
 export default function ImmobilierPage() {
   const [inputs, setInputs] = useState<SimulatorInputs>(() => getDefaults(200000))
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [prixDisplay, setPrixDisplay] = useState<string>(() => String(getDefaults(200000).prixBien))
+
+  useEffect(() => {
+    setPrixDisplay(String(inputs.prixBien))
+  }, [inputs.prixBien])
 
   const results = useMemo(() => calculateResults(inputs), [inputs])
 
@@ -273,8 +300,20 @@ export default function ImmobilierPage() {
                   <div className="relative flex items-center mt-1.5">
                     <Input
                       type="number"
-                      value={inputs.prixBien}
-                      onChange={e => handlePrixChange(parseFloat(e.target.value) || 0)}
+                      value={prixDisplay}
+                      onChange={e => {
+                        const raw = e.target.value
+                        setPrixDisplay(raw)
+                        const parsed = parseFloat(raw)
+                        if (!isNaN(parsed)) {
+                          handlePrixChange(parsed)
+                        }
+                      }}
+                      onBlur={() => {
+                        if (prixDisplay === '' || isNaN(parseFloat(prixDisplay))) {
+                          setPrixDisplay(String(inputs.prixBien))
+                        }
+                      }}
                       step={1000}
                       min={0}
                       className="pr-8 font-semibold h-11 text-lg"
