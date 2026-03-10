@@ -13,30 +13,32 @@ import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, A
 interface InvestmentLine {
   id: number
   name: string
-  allocation: number
+  versementMensuel: number
   tauxRendement: number
 }
 
 let nextId = 1
 
-function createLine(name = '', allocation = 10000, tauxRendement = 7): InvestmentLine {
-  return { id: nextId++, name, allocation, tauxRendement }
+function createLine(name = '', versementMensuel = 100, tauxRendement = 7): InvestmentLine {
+  return { id: nextId++, name, versementMensuel, tauxRendement }
 }
 
 function calculateResults(montantInitial: number, lines: InvestmentLine[], dureeAns: number) {
-  const totalAllocation = lines.reduce((sum, l) => sum + l.allocation, 0)
+  const totalVersementMensuel = lines.reduce((sum, l) => sum + l.versementMensuel, 0)
 
-  // Weighted average annual return
-  const tauxMoyen = totalAllocation > 0
-    ? lines.reduce((sum, l) => sum + l.tauxRendement * l.allocation, 0) / totalAllocation
+  // Weighted average annual return (weighted by monthly contribution)
+  const tauxMoyen = totalVersementMensuel > 0
+    ? lines.reduce((sum, l) => sum + l.tauxRendement * l.versementMensuel, 0) / totalVersementMensuel
     : 0
 
-  // Year-by-year evolution
+  const tauxMensuel = tauxMoyen / 100 / 12
+
+  // Month-by-month simulation for accurate compound interest
   const evolutionData = []
   let valeurPortefeuille = montantInitial
 
   for (let annee = 0; annee <= dureeAns; annee++) {
-    const totalInvestiCumul = montantInitial + totalAllocation * annee
+    const totalInvestiCumul = montantInitial + totalVersementMensuel * 12 * annee
     const plusValue = valeurPortefeuille - totalInvestiCumul
 
     evolutionData.push({
@@ -47,15 +49,16 @@ function calculateResults(montantInitial: number, lines: InvestmentLine[], duree
     })
 
     if (annee < dureeAns) {
-      // Apply annual return on the current portfolio value
-      valeurPortefeuille = valeurPortefeuille * (1 + tauxMoyen / 100)
-      // Add annual contributions
-      valeurPortefeuille += totalAllocation
+      // Simulate 12 months: each month apply interest then add contribution
+      for (let mois = 0; mois < 12; mois++) {
+        valeurPortefeuille = valeurPortefeuille * (1 + tauxMensuel)
+        valeurPortefeuille += totalVersementMensuel
+      }
     }
   }
 
   const valeurFinale = evolutionData[evolutionData.length - 1].valeurPortefeuille
-  const totalInvestiFinal = montantInitial + totalAllocation * dureeAns
+  const totalInvestiFinal = montantInitial + totalVersementMensuel * 12 * dureeAns
   const plusValueTotale = valeurFinale - totalInvestiFinal
   const rendementTotal = totalInvestiFinal > 0 ? ((valeurFinale / totalInvestiFinal) - 1) * 100 : 0
 
@@ -149,14 +152,14 @@ export default function BoursePage() {
   const [montantInitial, setMontantInitial] = useState(10000)
   const [dureeAns, setDureeAns] = useState(20)
   const [lines, setLines] = useState<InvestmentLine[]>([
-    createLine('ETF Monde', 5000, 8),
-    createLine('Obligations', 2000, 3),
+    createLine('ETF Monde', 300, 8),
+    createLine('Obligations', 100, 3),
   ])
 
   const results = useMemo(() => calculateResults(montantInitial, lines, dureeAns), [montantInitial, lines, dureeAns])
 
   const addLine = useCallback(() => {
-    setLines(prev => [...prev, createLine('', 1000, 7)])
+    setLines(prev => [...prev, createLine('', 100, 7)])
   }, [])
 
   const removeLine = useCallback((id: number) => {
@@ -272,8 +275,8 @@ export default function BoursePage() {
                     <div className="grid grid-cols-2 gap-3">
                       <Field
                         label="Versement mensuel (€)"
-                        value={line.allocation}
-                        onChange={v => updateLine(line.id, 'allocation', v)}
+                        value={line.versementMensuel}
+                        onChange={v => updateLine(line.id, 'versementMensuel', v)}
                         suffix="€/mois"
                         step={100}
                         min={0}
