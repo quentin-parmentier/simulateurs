@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from './components/theme-provider'
 import HomePage from './pages/HomePage'
 import ImmobilierPage from './pages/ImmobilierPage'
+import BoursePage from './pages/BoursePage'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/immobilier" element={<ImmobilierPage />} />
+          <Route path="/bourse" element={<BoursePage />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>

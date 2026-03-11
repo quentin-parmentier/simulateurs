@@ -19,15 +19,15 @@ const simulators = [
   },
   {
     id: 'bourse',
-    path: '#',
+    path: '/bourse',
     icon: TrendingUp,
     title: 'Simulateur Bourse',
     description: "Simulez l'évolution de votre portefeuille boursier avec différents scénarios de rendement.",
-    badge: 'Bientôt',
-    badgeVariant: 'secondary' as const,
+    badge: 'Disponible',
+    badgeVariant: 'default' as const,
     color: 'from-emerald-500/20 to-teal-500/20',
     iconColor: 'text-emerald-400',
-    disabled: true,
+    disabled: false,
   },
 ]
 
