@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -91,14 +91,31 @@ interface FieldProps {
 }
 
 function Field({ label, value, onChange, suffix, step = 1, min = 0, hint }: FieldProps) {
+  const [displayValue, setDisplayValue] = useState<string>(String(value))
+  const lastEmittedValue = useRef<number>(value)
+
+  useEffect(() => {
+    if (value !== lastEmittedValue.current) {
+      lastEmittedValue.current = value
+      setDisplayValue(String(value))
+    }
+  }, [value])
+
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">{label}</Label>
       <div className="relative flex items-center">
         <Input
           type="number"
-          value={value}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          value={displayValue}
+          onChange={e => {
+            const raw = e.target.value
+            setDisplayValue(raw)
+            const parsed = parseFloat(raw)
+            const emitted = isNaN(parsed) ? 0 : parsed
+            lastEmittedValue.current = emitted
+            onChange(emitted)
+          }}
           step={step}
           min={min}
           className="pr-10 text-sm h-9"
@@ -150,6 +167,7 @@ function KPICard({ title, value, subtitle, variant = 'default', icon }: KPICardP
 
 export default function BoursePage() {
   const [montantInitial, setMontantInitial] = useState(10000)
+  const [montantInitialDisplay, setMontantInitialDisplay] = useState(() => String(10000))
   const [dureeAns, setDureeAns] = useState(20)
   const [lines, setLines] = useState<InvestmentLine[]>([
     createLine('ETF Monde', 300, 8),
@@ -207,8 +225,13 @@ export default function BoursePage() {
                   <div className="relative flex items-center mt-1.5">
                     <Input
                       type="number"
-                      value={montantInitial}
-                      onChange={e => setMontantInitial(parseFloat(e.target.value) || 0)}
+                      value={montantInitialDisplay}
+                      onChange={e => {
+                        const raw = e.target.value
+                        setMontantInitialDisplay(raw)
+                        const parsed = parseFloat(raw)
+                        setMontantInitial(isNaN(parsed) ? 0 : parsed)
+                      }}
                       step={1000}
                       min={0}
                       className="pr-8 font-semibold h-11 text-lg"
