@@ -10,28 +10,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ModeToggle } from '@/components/ModeToggle'
 import { ArrowLeft, ChevronDown, TrendingUp, Home, Wallet, BarChart3 } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-type LocationType = 'nue' | 'meublee' | 'colocation'
-
-interface SimulatorInputs {
-  prixBien: number
-  surface: number
-  fraisNotaire: number
-  travaux: number
-  ameublement: number
-  apport: number
-  tauxCredit: number
-  dureeCredit: number
-  assuranceEmprunteur: number
-  loyerMensuel: number
-  locationType: LocationType
-  taxeFonciere: number
-  chargesCopro: number
-  assurancePNO: number
-  entretien: number
-  vacanceLocative: number
-  fraisGestion: number
-}
+import { calculateResults } from '@/lib/immobilier'
+import type { LocationType, SimulatorInputs } from '@/lib/immobilier'
 
 function getDefaults(prix: number, locationType: LocationType = 'meublee'): SimulatorInputs {
   const surface = Math.round(prix / 2500)
@@ -73,75 +53,7 @@ function getDefaults(prix: number, locationType: LocationType = 'meublee'): Simu
   }
 }
 
-const WEEKS_PER_MONTH = 52 / 12
 const CASH_FLOW_WARNING_THRESHOLD = -100
-
-function calculateMensualite(capital: number, tauxAnnuel: number, dureeAns: number): number {
-  if (capital <= 0 || tauxAnnuel <= 0 || dureeAns <= 0) return 0
-  const t = tauxAnnuel / 100 / 12
-  const n = dureeAns * 12
-  return (capital * t) / (1 - Math.pow(1 + t, -n))
-}
-
-function calculateResults(inputs: SimulatorInputs) {
-  const { prixBien, fraisNotaire, travaux, ameublement, apport, tauxCredit, dureeCredit,
-    assuranceEmprunteur, loyerMensuel, taxeFonciere, chargesCopro, assurancePNO,
-    entretien, vacanceLocative, fraisGestion } = inputs
-
-  const coutTotalProjet = prixBien + fraisNotaire + travaux + ameublement
-  const montantEmprunte = Math.max(0, coutTotalProjet - apport)
-  const mensualiteCredit = calculateMensualite(montantEmprunte, tauxCredit, dureeCredit)
-  const totalInterets = mensualiteCredit * dureeCredit * 12 - montantEmprunte
-
-  const loyerAnnuel = loyerMensuel * 12
-  const vacanceLocativeCout = loyerMensuel * vacanceLocative / 52 * WEEKS_PER_MONTH
-  const fraisGestionCout = loyerAnnuel * fraisGestion / 100
-  const chargesAnnuelles = taxeFonciere + chargesCopro * 12 + assurancePNO + entretien + vacanceLocativeCout + fraisGestionCout
-
-  const rendementBrut = coutTotalProjet > 0 ? (loyerAnnuel / coutTotalProjet) * 100 : 0
-  const revenuNetAnnuel = loyerAnnuel - chargesAnnuelles
-  const rendementNet = coutTotalProjet > 0 ? (revenuNetAnnuel / coutTotalProjet) * 100 : 0
-
-  const cashFlowMensuel = loyerMensuel - mensualiteCredit - assuranceEmprunteur - chargesAnnuelles / 12
-  const effortEpargne = Math.max(0, -cashFlowMensuel)
-
-  const prixAuM2 = inputs.surface > 0 ? prixBien / inputs.surface : 0
-
-  // Patrimoine net over time
-  const patrimoineData = []
-  let capitalRestantDu = montantEmprunte
-  const t = tauxCredit / 100 / 12
-  for (let annee = 0; annee <= dureeCredit; annee++) {
-    patrimoineData.push({
-      annee,
-      patrimoineNet: Math.round(prixBien - capitalRestantDu),
-      capitalRestantDu: Math.round(capitalRestantDu),
-    })
-    if (annee < dureeCredit) {
-      for (let mois = 0; mois < 12; mois++) {
-        if (capitalRestantDu <= 0) break
-        const interets = capitalRestantDu * t
-        const remboursementCapital = mensualiteCredit - interets
-        capitalRestantDu = Math.max(0, capitalRestantDu - remboursementCapital)
-      }
-    }
-  }
-
-  return {
-    coutTotalProjet,
-    montantEmprunte,
-    mensualiteCredit,
-    totalInterets,
-    chargesAnnuelles,
-    revenuNetAnnuel,
-    rendementBrut,
-    rendementNet,
-    cashFlowMensuel,
-    effortEpargne,
-    prixAuM2,
-    patrimoineData,
-  }
-}
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value)
@@ -158,10 +70,11 @@ interface FieldProps {
   suffix?: string
   step?: number
   min?: number
+  max?: number
   hint?: string
 }
 
-function Field({ label, value, onChange, suffix, step = 1, min = 0, hint }: FieldProps) {
+function Field({ label, value, onChange, suffix, step = 1, min = 0, max, hint }: FieldProps) {
   const [displayValue, setDisplayValue] = useState<string>(String(value ?? ''))
 
   useEffect(() => {
@@ -194,6 +107,7 @@ function Field({ label, value, onChange, suffix, step = 1, min = 0, hint }: Fiel
           onBlur={handleBlur}
           step={step}
           min={min}
+          max={max}
           className="pr-10 text-sm h-9"
         />
         {suffix && (
@@ -405,7 +319,7 @@ export default function ImmobilierPage() {
                 <Field label="Charges copro (€/mois)" value={inputs.chargesCopro} onChange={updateField('chargesCopro')} suffix="€/mois" step={10} />
                 <Field label="Assurance PNO (€/an)" value={inputs.assurancePNO} onChange={updateField('assurancePNO')} suffix="€/an" step={10} />
                 <Field label="Entretien / imprévus (€/an)" value={inputs.entretien} onChange={updateField('entretien')} suffix="€/an" step={100} />
-                <Field label="Vacance locative (semaines/an)" value={inputs.vacanceLocative} onChange={updateField('vacanceLocative')} suffix="sem." step={1} />
+                <Field label="Vacance locative (semaines/an)" value={inputs.vacanceLocative} onChange={updateField('vacanceLocative')} suffix="sem." step={1} max={52} />
                 <Field label="Frais de gestion (%)" value={inputs.fraisGestion} onChange={updateField('fraisGestion')} suffix="%" step={0.5} hint="0% = gestion perso" />
               </CardContent>
             </Card>
@@ -427,7 +341,7 @@ export default function ImmobilierPage() {
                 <KPICard
                   title="Rendement net"
                   value={formatPercent(results.rendementNet)}
-                  subtitle="Avant impôt"
+                  subtitle="Avant crédit et impôt"
                   icon={<TrendingUp className="w-4 h-4" />}
                   variant={results.rendementNet >= 4 ? 'positive' : results.rendementNet >= 2 ? 'warning' : 'negative'}
                 />
@@ -501,7 +415,7 @@ export default function ImmobilierPage() {
                       { label: 'Mensualité de crédit', value: formatEuro(results.mensualiteCredit) + '/mois' },
                       { label: 'Total des intérêts', value: formatEuro(Math.max(0, results.totalInterets)) },
                       { label: 'Total charges annuelles', value: formatEuro(results.chargesAnnuelles) },
-                      { label: 'Revenu net annuel avant impôt', value: formatEuro(results.revenuNetAnnuel) },
+                      { label: 'Revenu net d\'exploitation (hors crédit)', value: formatEuro(results.revenuNetAnnuel) },
                       { label: 'Prix au m²', value: formatEuro(results.prixAuM2) + '/m²' },
                     ].map(({ label, value }) => (
                       <div key={label} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
