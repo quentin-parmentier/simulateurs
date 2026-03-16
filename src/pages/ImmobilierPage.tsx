@@ -341,9 +341,9 @@ export default function ImmobilierPage() {
                 <KPICard
                   title="Rendement net"
                   value={formatPercent(results.rendementNet)}
-                  subtitle="Avant crédit et impôt"
+                  subtitle="Après crédit, avant impôt"
                   icon={<TrendingUp className="w-4 h-4" />}
-                  variant={results.rendementNet >= 4 ? 'positive' : results.rendementNet >= 2 ? 'warning' : 'negative'}
+                  variant={results.rendementNet > 0 ? 'positive' : results.rendementNet >= -1 ? 'warning' : 'negative'}
                 />
                 <KPICard
                   title="Cash-flow mensuel"
