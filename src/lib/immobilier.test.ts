@@ -115,6 +115,32 @@ describe('calculateResults - rendements', () => {
     expect(results.rendementNet).toBeLessThanOrEqual(results.rendementBrut)
   })
 
+  it('le rendement net est cohérent avec le cash-flow mensuel (même signe)', () => {
+    const results = calculateResults(baseInputs)
+    // rendementNet = cashFlowMensuel * 12 / coutTotalProjet * 100
+    // So they must always have the same sign
+    expect(Math.sign(results.rendementNet)).toBe(Math.sign(results.cashFlowMensuel))
+  })
+
+  it('le rendement net correspond au cash-flow annualisé / coût total', () => {
+    const results = calculateResults(baseInputs)
+    const expected = (results.cashFlowMensuel * 12 / results.coutTotalProjet) * 100
+    expect(results.rendementNet).toBeCloseTo(expected, 5)
+  })
+
+  it('les frais de gestion sont calculés sur le loyer effectif (après vacance)', () => {
+    const fraisGestion = 8
+    const vacanceLocative = 4 // 4 semaines
+    const loyerAnnuel = baseInputs.loyerMensuel * 12
+    const vacanceLocativeCout = loyerAnnuel * vacanceLocative / 52
+    const expectedFraisGestionCout = (loyerAnnuel - vacanceLocativeCout) * fraisGestion / 100
+    const results = calculateResults({ ...baseInputs, fraisGestion, vacanceLocative })
+    // chargesAnnuelles = taxe + copro*12 + PNO + entretien + vacance + fraisGestion
+    const baseCharges = 1500 + 600 + 150 + 500
+    const expectedCharges = baseCharges + vacanceLocativeCout + expectedFraisGestionCout
+    expect(results.chargesAnnuelles).toBeCloseTo(expectedCharges, 1)
+  })
+
   it('coût total = prix + notaire + travaux + ameublement', () => {
     const results = calculateResults(baseInputs)
     const expected = baseInputs.prixBien + baseInputs.fraisNotaire + baseInputs.travaux + baseInputs.ameublement

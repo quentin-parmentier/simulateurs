@@ -44,17 +44,21 @@ export function calculateResults(inputs: SimulatorInputs) {
   // Vacancy cost: rent lost for the weeks the property is empty
   // vacanceLocative weeks out of 52 weeks per year × annual rent
   const vacanceLocativeCout = loyerAnnuel * vacanceLocative / 52
-  const fraisGestionCout = loyerAnnuel * fraisGestion / 100
+  // Management fees apply to effectively collected rent (after vacancy)
+  const fraisGestionCout = (loyerAnnuel - vacanceLocativeCout) * fraisGestion / 100
   const chargesAnnuelles = taxeFonciere + chargesCopro * 12 + assurancePNO + entretien + vacanceLocativeCout + fraisGestionCout
 
   const rendementBrut = coutTotalProjet > 0 ? (loyerAnnuel / coutTotalProjet) * 100 : 0
-  // Revenu net d'exploitation: rental income minus operating charges (before debt service)
+  // Revenu net d'exploitation: rental income minus operating charges (before debt service and tax)
   const revenuNetAnnuel = loyerAnnuel - chargesAnnuelles
-  const rendementNet = coutTotalProjet > 0 ? (revenuNetAnnuel / coutTotalProjet) * 100 : 0
 
   // Cash-flow: what's left after paying the loan and all charges each month
   const cashFlowMensuel = loyerMensuel - mensualiteCredit - assuranceEmprunteur - chargesAnnuelles / 12
   const effortEpargne = Math.max(0, -cashFlowMensuel)
+
+  // Rendement net: annualised cash-flow relative to total project cost (after credit, before tax).
+  // Consistent with cashFlowMensuel: positive iff cash-flow is positive.
+  const rendementNet = coutTotalProjet > 0 ? (cashFlowMensuel * 12 / coutTotalProjet) * 100 : 0
 
   const prixAuM2 = inputs.surface > 0 ? prixBien / inputs.surface : 0
 
