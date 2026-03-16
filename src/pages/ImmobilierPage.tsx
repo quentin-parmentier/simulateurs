@@ -353,11 +353,11 @@ export default function ImmobilierPage() {
                   variant={cashFlowVariant}
                 />
                 <KPICard
-                  title="Effort d'épargne"
-                  value={formatEuro(results.effortEpargne)}
-                  subtitle="À sortir de poche / mois"
+                  title="Revenu net"
+                  value={formatEuro(results.revenuNetAnnuel)}
+                  subtitle="Loyer - charges · /an"
                   icon={<BarChart3 className="w-4 h-4" />}
-                  variant={results.effortEpargne === 0 ? 'positive' : results.effortEpargne < 200 ? 'warning' : 'negative'}
+                  variant={results.revenuNetAnnuel > 0 ? 'positive' : results.revenuNetAnnuel >= -500 ? 'warning' : 'negative'}
                 />
               </div>
             </div>
