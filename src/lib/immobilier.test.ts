@@ -115,17 +115,21 @@ describe('calculateResults - rendements', () => {
     expect(results.rendementNet).toBeLessThanOrEqual(results.rendementBrut)
   })
 
-  it('le rendement net est cohérent avec le cash-flow mensuel (même signe)', () => {
+  it('le rendement net correspond au revenu net annuel / coût total', () => {
     const results = calculateResults(baseInputs)
-    // rendementNet = cashFlowMensuel * 12 / coutTotalProjet * 100
-    // So they must always have the same sign
-    expect(Math.sign(results.rendementNet)).toBe(Math.sign(results.cashFlowMensuel))
+    const expected = (results.revenuNetAnnuel / results.coutTotalProjet) * 100
+    expect(results.rendementNet).toBeCloseTo(expected, 5)
   })
 
-  it('le rendement net correspond au cash-flow annualisé / coût total', () => {
+  it('le rendement net peut être positif même si le cash-flow est négatif (financement coûteux)', () => {
+    // Standard property: positive NOI but credit costs make cash-flow negative
     const results = calculateResults(baseInputs)
-    const expected = (results.cashFlowMensuel * 12 / results.coutTotalProjet) * 100
-    expect(results.rendementNet).toBeCloseTo(expected, 5)
+    // revenuNetAnnuel > 0 (property earns more than charges)
+    expect(results.revenuNetAnnuel).toBeGreaterThan(0)
+    // rendementNet is based on NOI, so it should also be positive
+    expect(results.rendementNet).toBeGreaterThan(0)
+    // But cash-flow can still be negative due to credit costs
+    // (this is the key difference vs the old cash-flow-based definition)
   })
 
   it('les frais de gestion sont calculés sur le loyer effectif (après vacance)', () => {

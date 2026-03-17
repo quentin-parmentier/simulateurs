@@ -56,9 +56,9 @@ export function calculateResults(inputs: SimulatorInputs) {
   const cashFlowMensuel = loyerMensuel - mensualiteCredit - assuranceEmprunteur - chargesAnnuelles / 12
   const effortEpargne = Math.max(0, -cashFlowMensuel)
 
-  // Rendement net: annualised cash-flow relative to total project cost (after credit, before tax).
-  // Consistent with cashFlowMensuel: positive iff cash-flow is positive.
-  const rendementNet = coutTotalProjet > 0 ? (cashFlowMensuel * 12 / coutTotalProjet) * 100 : 0
+  // Rendement net de charges: NOI relative to total project cost (after operating charges, before credit and tax).
+  // Standard French real estate definition: consistent with revenuNetAnnuel, independent of financing.
+  const rendementNet = coutTotalProjet > 0 ? (revenuNetAnnuel / coutTotalProjet) * 100 : 0
 
   const prixAuM2 = inputs.surface > 0 ? prixBien / inputs.surface : 0
 

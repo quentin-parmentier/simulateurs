@@ -341,9 +341,9 @@ export default function ImmobilierPage() {
                 <KPICard
                   title="Rendement net"
                   value={formatPercent(results.rendementNet)}
-                  subtitle="Après crédit, avant impôt"
+                  subtitle="Après charges, avant crédit et impôt"
                   icon={<TrendingUp className="w-4 h-4" />}
-                  variant={results.rendementNet > 0 ? 'positive' : results.rendementNet >= -1 ? 'warning' : 'negative'}
+                  variant={results.rendementNet >= 5 ? 'positive' : results.rendementNet >= 3 ? 'warning' : 'negative'}
                 />
                 <KPICard
                   title="Cash-flow mensuel"
@@ -353,11 +353,11 @@ export default function ImmobilierPage() {
                   variant={cashFlowVariant}
                 />
                 <KPICard
-                  title="Effort d'épargne"
-                  value={formatEuro(results.effortEpargne)}
-                  subtitle="À sortir de poche / mois"
+                  title="Revenu net"
+                  value={formatEuro(results.revenuNetAnnuel)}
+                  subtitle="Loyer - charges · /an"
                   icon={<BarChart3 className="w-4 h-4" />}
-                  variant={results.effortEpargne === 0 ? 'positive' : results.effortEpargne < 200 ? 'warning' : 'negative'}
+                  variant={results.revenuNetAnnuel > 0 ? 'positive' : results.revenuNetAnnuel >= -500 ? 'warning' : 'negative'}
                 />
               </div>
             </div>
