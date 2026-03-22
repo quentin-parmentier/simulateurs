@@ -14,11 +14,17 @@ export interface SimulatorInputs {
   locationType: LocationType
   taxeFonciere: number
   chargesCopro: number
+  chargesCoproRecup: number
   assurancePNO: number
   entretien: number
   vacanceLocative: number
   fraisGestion: number
 }
+
+// LMNP amortization rates
+const TAUX_AMORTISSEMENT_BIEN = 0.015     // 1.5%/an
+const TAUX_AMORTISSEMENT_MOBILIER = 0.15  // 15%/an
+const TAUX_IMPOSITION_LMNP = 0.3          // 30% flat rate
 
 export function calculateMensualite(capital: number, tauxAnnuel: number, dureeAns: number): number {
   if (capital <= 0 || tauxAnnuel <= 0 || dureeAns <= 0) return 0
@@ -62,6 +68,22 @@ export function calculateResults(inputs: SimulatorInputs) {
 
   const prixAuM2 = inputs.surface > 0 ? prixBien / inputs.surface : 0
 
+  // LMNP amortization (monthly)
+  const amortissementBien = prixBien * TAUX_AMORTISSEMENT_BIEN / 12
+  const amortissementMobilier = ameublement * TAUX_AMORTISSEMENT_MOBILIER / 12
+
+  // Non-recoverable charges (monthly): used for LMNP tax base
+  const chargesNonRecupMensuelles = (taxeFonciere + chargesCopro * 12 + assurancePNO + entretien) / 12
+
+  // LMNP taxable base = rent - non-recoverable charges - amortization
+  const baseImposableLMNP = loyerMensuel - chargesNonRecupMensuelles - amortissementBien - amortissementMobilier
+
+  // Tax = 0 if base < 0
+  const impotsMensuel = baseImposableLMNP > 0 ? baseImposableLMNP * TAUX_IMPOSITION_LMNP : 0
+
+  // Cash-flow net after tax
+  const cashFlowNetMensuel = cashFlowMensuel - impotsMensuel
+
   // Patrimoine net over time
   const patrimoineData = []
   let capitalRestantDu = montantEmprunte
@@ -94,6 +116,11 @@ export function calculateResults(inputs: SimulatorInputs) {
     cashFlowMensuel,
     effortEpargne,
     prixAuM2,
+    amortissementBien,
+    amortissementMobilier,
+    baseImposableLMNP,
+    impotsMensuel,
+    cashFlowNetMensuel,
     patrimoineData,
   }
 }

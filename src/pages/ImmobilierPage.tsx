@@ -27,6 +27,7 @@ function getDefaults(prix: number, locationType: LocationType = 'meublee'): Simu
   const loyerMensuel = Math.round((prix * 0.07) / 12)
   const taxeFonciere = Math.round(prix * 0.01)
   const chargesCopro = 50
+  const chargesCoproRecup = 100
   const assurancePNO = 150
   const entretien = 500
   const vacanceLocative = 2
@@ -46,6 +47,7 @@ function getDefaults(prix: number, locationType: LocationType = 'meublee'): Simu
     locationType,
     taxeFonciere,
     chargesCopro,
+    chargesCoproRecup,
     assurancePNO,
     entretien,
     vacanceLocative,
@@ -317,6 +319,7 @@ export default function ImmobilierPage() {
               <CardContent className="grid grid-cols-2 gap-4">
                 <Field label="Taxe foncière (€/an)" value={inputs.taxeFonciere} onChange={updateField('taxeFonciere')} suffix="€/an" step={50} />
                 <Field label="Charges copro (€/mois)" value={inputs.chargesCopro} onChange={updateField('chargesCopro')} suffix="€/mois" step={10} />
+                <Field label="Charges copro récup. (€/mois)" value={inputs.chargesCoproRecup} onChange={updateField('chargesCoproRecup')} suffix="€/mois" step={10} hint="Récupérables auprès du locataire (ex: chauffage, eau)" />
                 <Field label="Assurance PNO (€/an)" value={inputs.assurancePNO} onChange={updateField('assurancePNO')} suffix="€/an" step={10} />
                 <Field label="Entretien / imprévus (€/an)" value={inputs.entretien} onChange={updateField('entretien')} suffix="€/an" step={100} />
                 <Field label="Vacance locative (semaines/an)" value={inputs.vacanceLocative} onChange={updateField('vacanceLocative')} suffix="sem." step={1} max={52} />
@@ -351,6 +354,13 @@ export default function ImmobilierPage() {
                   subtitle="Avant impôt"
                   icon={<Wallet className="w-4 h-4" />}
                   variant={cashFlowVariant}
+                />
+                <KPICard
+                  title="Cash-flow net"
+                  value={formatEuro(results.cashFlowNetMensuel)}
+                  subtitle="Après impôt (LMNP réel)"
+                  icon={<Wallet className="w-4 h-4" />}
+                  variant={results.cashFlowNetMensuel > 0 ? 'positive' : results.cashFlowNetMensuel > CASH_FLOW_WARNING_THRESHOLD ? 'warning' : 'negative'}
                 />
                 <KPICard
                   title="Revenu net"
@@ -417,6 +427,10 @@ export default function ImmobilierPage() {
                       { label: 'Total charges annuelles', value: formatEuro(results.chargesAnnuelles) },
                       { label: 'Revenu net d\'exploitation (hors crédit)', value: formatEuro(results.revenuNetAnnuel) },
                       { label: 'Prix au m²', value: formatEuro(results.prixAuM2) + '/m²' },
+                      { label: 'Amortissement bien (mensuel)', value: formatEuro(results.amortissementBien) + '/mois' },
+                      { label: 'Amortissement mobilier (mensuel)', value: formatEuro(results.amortissementMobilier) + '/mois' },
+                      { label: 'Base imposable LMNP (mensuelle)', value: formatEuro(results.baseImposableLMNP) + '/mois' },
+                      { label: 'Impôts LMNP estimés (mensuel)', value: formatEuro(results.impotsMensuel) + '/mois' },
                     ].map(({ label, value }) => (
                       <div key={label} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
                         <span className="text-sm text-muted-foreground">{label}</span>

@@ -16,6 +16,7 @@ const baseInputs: SimulatorInputs = {
   locationType: 'meublee',
   taxeFonciere: 1500,
   chargesCopro: 50,
+  chargesCoproRecup: 100,
   assurancePNO: 150,
   entretien: 500,
   vacanceLocative: 2,
@@ -195,5 +196,48 @@ describe('calculateResults - patrimoine', () => {
     const results = calculateResults(baseInputs)
     expect(results.patrimoineData[10].patrimoineNet).toBeGreaterThan(results.patrimoineData[0].patrimoineNet)
     expect(results.patrimoineData[25].patrimoineNet).toBeGreaterThan(results.patrimoineData[10].patrimoineNet)
+  })
+})
+
+describe('calculateResults - LMNP amortissement et fiscalité', () => {
+  it('amortissement bien = prix × 1.5% / 12', () => {
+    const results = calculateResults(baseInputs)
+    expect(results.amortissementBien).toBeCloseTo(baseInputs.prixBien * 0.015 / 12, 2)
+  })
+
+  it('amortissement mobilier = ameublement × 15% / 12', () => {
+    const results = calculateResults(baseInputs)
+    expect(results.amortissementMobilier).toBeCloseTo(baseInputs.ameublement * 0.15 / 12, 2)
+  })
+
+  it('amortissement mobilier = 0 si ameublement = 0', () => {
+    const results = calculateResults({ ...baseInputs, ameublement: 0 })
+    expect(results.amortissementMobilier).toBe(0)
+  })
+
+  it('base imposable LMNP = loyer - charges non récup mensuelles - amortissements', () => {
+    const results = calculateResults(baseInputs)
+    const chargesNonRecupMensuelles = (baseInputs.taxeFonciere + baseInputs.chargesCopro * 12 + baseInputs.assurancePNO + baseInputs.entretien) / 12
+    const expected = baseInputs.loyerMensuel - chargesNonRecupMensuelles - results.amortissementBien - results.amortissementMobilier
+    expect(results.baseImposableLMNP).toBeCloseTo(expected, 2)
+  })
+
+  it('impôts = 30% de la base imposable si positive', () => {
+    const inputs = { ...baseInputs, loyerMensuel: 3000 }
+    const results = calculateResults(inputs)
+    expect(results.baseImposableLMNP).toBeGreaterThan(0)
+    expect(results.impotsMensuel).toBeCloseTo(results.baseImposableLMNP * 0.3, 2)
+  })
+
+  it('impôts = 0 si base imposable négative', () => {
+    const inputs = { ...baseInputs, loyerMensuel: 100 }
+    const results = calculateResults(inputs)
+    expect(results.baseImposableLMNP).toBeLessThan(0)
+    expect(results.impotsMensuel).toBe(0)
+  })
+
+  it('cash-flow net = cash-flow mensuel - impôts', () => {
+    const results = calculateResults(baseInputs)
+    expect(results.cashFlowNetMensuel).toBeCloseTo(results.cashFlowMensuel - results.impotsMensuel, 2)
   })
 })
