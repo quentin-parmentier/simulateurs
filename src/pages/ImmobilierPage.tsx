@@ -1,448 +1,180 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { ModeToggle } from '@/components/ModeToggle'
-import { ArrowLeft, ChevronDown, TrendingUp, Home, Wallet, BarChart3 } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { calculateResults } from '@/lib/immobilier'
-import type { LocationType, SimulatorInputs } from '@/lib/immobilier'
 
-function getDefaults(prix: number, locationType: LocationType = 'meublee'): SimulatorInputs {
+type LocationType = 'nue' | 'meublee' | 'colocation'
+
+interface SimulatorInputs {
+  prixBien: number
+  surface: number
+  travaux: number
+  ameublement: number
+  fraisNotaire: number
+  apport: number
+  tauxCredit: number
+  dureeCredit: number
+  loyerMensuel: number
+  locationType: LocationType
+  taxeFonciere: number
+  chargesCopro: number
+  chargesCoproRecup: number
+  assurancePNO: number
+  entretien: number
+  vacanceLocative: number // en semaines
+  fraisGestion: number // %
+  assuranceEmprunteur: number
+}
+
+interface SimulatorResults {
+  coutTotal: number
+  mensualiteCredit: number
+  chargesAnnuelles: number
+  cashFlowBrut: number
+  cashFlowNet: number
+  amortissementBien: number
+  amortissementMobilier: number
+  baseImposableLMNP: number
+  impots: number
+}
+
+function getDefaults(prix: number, type: LocationType = 'meublee'): SimulatorInputs {
   const surface = Math.round(prix / 2500)
   const fraisNotaire = Math.round(prix * 0.08)
   const travaux = 0
-  const ameublement = locationType !== 'nue' ? 5000 : 0
+  const ameublement = type !== 'nue' ? 5000 : 0
   const coutTotal = prix + fraisNotaire + travaux + ameublement
   const apport = Math.round(coutTotal * 0.10)
-  const capitalEmprunte = coutTotal - apport
-  const tauxCredit = 3.25
-  const dureeCredit = 25
-  const assuranceEmprunteur = Math.round((capitalEmprunte * 0.003) / 12)
-  const loyerMensuel = Math.round((prix * 0.07) / 12)
-  const taxeFonciere = Math.round(prix * 0.01)
-  const chargesCopro = 50
-  const assurancePNO = 150
-  const entretien = 500
-  const vacanceLocative = 2
-  const fraisGestion = 0
-
+  const tauxCredit = 4
+  const dureeCredit = 20
+  const assuranceEmprunteur = Math.round((coutTotal - apport) * 0.004 / 12) // 0,4% annuel / mois
+  const loyerMensuel = type === 'colocation' ? 390 * 3 : Math.round((prix * 0.07) / 12)
   return {
     prixBien: prix,
     surface,
-    fraisNotaire,
     travaux,
     ameublement,
+    fraisNotaire,
     apport,
     tauxCredit,
     dureeCredit,
-    assuranceEmprunteur,
     loyerMensuel,
-    locationType,
-    taxeFonciere,
-    chargesCopro,
-    assurancePNO,
-    entretien,
-    vacanceLocative,
-    fraisGestion,
+    locationType: type,
+    taxeFonciere: Math.round(prix * 0.01), // 1% / an
+    chargesCopro: 50,
+    chargesCoproRecup: 100, // ex: chauffage, eau
+    assurancePNO: 150,
+    entretien: 500,
+    vacanceLocative: 4, // 4 semaines / an
+    fraisGestion: 0,
+    assuranceEmprunteur,
   }
 }
 
-const CASH_FLOW_WARNING_THRESHOLD = -100
+// Calcul des résultats détaillés
+function calculateResults(inputs: SimulatorInputs): SimulatorResults {
+  const coutTotal = inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement
+  const capitalEmprunte = coutTotal - inputs.apport
+  const mensualiteCredit = (() => {
+    const r = inputs.tauxCredit / 100 / 12
+    const n = inputs.dureeCredit * 12
+    const mensualite = (capitalEmprunte * r) / (1 - Math.pow(1 + r, -n))
+    return mensualite + inputs.assuranceEmprunteur
+  })()
 
-function formatEuro(value: number): string {
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value)
-}
+  // Charges annuelles
+  const vacanceMensuelle = (inputs.loyerMensuel * (inputs.vacanceLocative / 4)) / 12 // approx
+  const chargesAnn = inputs.chargesCopro * 12 + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien + vacanceMensuelle * 12 + (inputs.loyerMensuel * inputs.fraisGestion / 100)
+  const chargesAnnellesNonRecup = inputs.chargesCopro * 12 + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien
 
-function formatPercent(value: number): string {
-  return `${value.toFixed(2)}%`
-}
+  // Amortissement
+  const amortissementBien = inputs.prixBien * 0.015 / 12 // 1,5 %/an
+  const amortissementMobilier = inputs.ameublement * 0.15 / 12 // 15 %/an
 
-interface FieldProps {
-  label: string
-  value: number
-  onChange: (v: number) => void
-  suffix?: string
-  step?: number
-  min?: number
-  max?: number
-  hint?: string
-}
+  // Cashflow brut = loyer - charges non récup
+  const cashFlowBrut = inputs.loyerMensuel - (chargesAnnellesNonRecup / 12) - mensualiteCredit
 
-function Field({ label, value, onChange, suffix, step = 1, min = 0, max, hint }: FieldProps) {
-  const [displayValue, setDisplayValue] = useState<string>(String(value ?? ''))
+  // Base imposable LMNP = (loyer - charges - amortissements)
+  const baseImposableLMNP = inputs.loyerMensuel - (chargesAnnellesNonRecup / 12) - amortissementBien - amortissementMobilier
 
-  useEffect(() => {
-    setDisplayValue(String(value))
-  }, [value])
+  // Impôt = 0 si base < 0
+  const impots = baseImposableLMNP > 0 ? baseImposableLMNP * 0.3 : 0
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value
-    setDisplayValue(raw)
-    const parsed = parseFloat(raw)
-    if (!isNaN(parsed)) {
-      onChange(parsed)
-    }
+  const cashFlowNet = cashFlowBrut - impots
+
+  return {
+    coutTotal,
+    mensualiteCredit,
+    chargesAnnuelles: chargesAnn,
+    cashFlowBrut,
+    cashFlowNet,
+    amortissementBien,
+    amortissementMobilier,
+    baseImposableLMNP,
+    impots,
   }
+}
 
-  const handleBlur = () => {
-    if (displayValue === '' || isNaN(parseFloat(displayValue))) {
-      setDisplayValue(String(value))
-    }
-  }
-
+function Field({ label, value, onChange, suffix }: { label: string; value: number; onChange: (v: number) => void; suffix?: string }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <div className="relative flex items-center">
-        <Input
-          type="number"
-          value={displayValue}
-          onChange={handleChange}
-          onBlur={handleBlur}
-          step={step}
-          min={min}
-          max={max}
-          className="pr-10 text-sm h-9"
-        />
-        {suffix && (
-          <span className="absolute right-3 text-xs text-muted-foreground pointer-events-none">{suffix}</span>
-        )}
-      </div>
-      {hint && <p className="text-xs text-muted-foreground/60">{hint}</p>}
+    <div className="space-y-1">
+      <Label>{label}</Label>
+      <Input
+        type="number"
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="text-sm h-9"
+      />
+      {suffix && <span className="text-xs">{suffix}</span>}
     </div>
   )
 }
 
-interface KPICardProps {
-  title: string
-  value: string
-  subtitle?: string
-  variant?: 'default' | 'positive' | 'warning' | 'negative'
-  icon: React.ReactNode
-}
-
-function KPICard({ title, value, subtitle, variant = 'default', icon }: KPICardProps) {
-  const variantStyles = {
-    default: 'border-border/50',
-    positive: 'border-emerald-500/30 bg-emerald-500/5',
-    warning: 'border-orange-500/30 bg-orange-500/5',
-    negative: 'border-red-500/30 bg-red-500/5',
-  }
-  const valueStyles = {
-    default: 'text-foreground',
-    positive: 'text-emerald-400',
-    warning: 'text-orange-400',
-    negative: 'text-red-400',
-  }
-
-  return (
-    <Card className={`${variantStyles[variant]} transition-all duration-200`}>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between mb-3">
-          <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{title}</span>
-          <div className="text-muted-foreground/50">{icon}</div>
-        </div>
-        <div className={`text-2xl font-bold tabular-nums ${valueStyles[variant]}`}>{value}</div>
-        {subtitle && <div className="text-xs text-muted-foreground mt-1">{subtitle}</div>}
-      </CardContent>
-    </Card>
-  )
-}
-
-export default function ImmobilierPage() {
-  const [inputs, setInputs] = useState<SimulatorInputs>(() => getDefaults(200000))
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [prixDisplay, setPrixDisplay] = useState<string>(() => String(getDefaults(200000).prixBien))
-
-  useEffect(() => {
-    setPrixDisplay(String(inputs.prixBien))
-  }, [inputs.prixBien])
-
+export default function ImmobilierSimulator() {
+  const [inputs, setInputs] = useState<SimulatorInputs>(() => getDefaults(150000, 'colocation'))
   const results = useMemo(() => calculateResults(inputs), [inputs])
 
   const updateField = useCallback((field: keyof SimulatorInputs) => (value: number) => {
     setInputs(prev => ({ ...prev, [field]: value }))
   }, [])
 
-  const handlePrixChange = useCallback((prix: number) => {
-    setInputs(prev => getDefaults(prix, prev.locationType))
-  }, [])
-
-  const cashFlowVariant = results.cashFlowMensuel > 0 ? 'positive' : results.cashFlowMensuel > CASH_FLOW_WARNING_THRESHOLD ? 'warning' : 'negative'
-  const coutTotalInputs = inputs.prixBien + inputs.fraisNotaire + inputs.travaux + inputs.ameublement
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border/50 backdrop-blur-sm sticky top-0 z-50 bg-background/80">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <Separator orientation="vertical" className="h-5" />
-            <div className="flex items-center gap-2">
-              <Home className="w-4 h-4 text-blue-400" />
-              <span className="font-semibold text-sm">Rentabilité Immobilière Locative</span>
-            </div>
-          </div>
-          <ModeToggle />
-        </div>
-      </header>
+    <div className="p-6 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Inputs projet</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4">
+          <Field label="Prix du bien" value={inputs.prixBien} onChange={updateField('prixBien')} suffix="€" />
+          <Field label="Surface" value={inputs.surface} onChange={updateField('surface')} suffix="m²" />
+          <Field label="Travaux" value={inputs.travaux} onChange={updateField('travaux')} suffix="€" />
+          <Field label="Ameublement" value={inputs.ameublement} onChange={updateField('ameublement')} suffix="€" />
+          <Field label="Frais de notaire" value={inputs.fraisNotaire} onChange={updateField('fraisNotaire')} suffix="€" />
+          <Field label="Apport" value={inputs.apport} onChange={updateField('apport')} suffix="€" />
+          <Field label="Taux crédit" value={inputs.tauxCredit} onChange={updateField('tauxCredit')} suffix="%" />
+          <Field label="Durée crédit" value={inputs.dureeCredit} onChange={updateField('dureeCredit')} suffix="ans" />
+          <Field label="Assurance emprunteur" value={inputs.assuranceEmprunteur} onChange={updateField('assuranceEmprunteur')} suffix="€/mois" />
+          <Field label="Loyer mensuel" value={inputs.loyerMensuel} onChange={updateField('loyerMensuel')} suffix="€/mois" />
+        </CardContent>
+      </Card>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Left: Inputs */}
-          <div className="space-y-6">
-            {/* Le bien */}
-            <Card className="border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Home className="w-4 h-4 text-blue-400" />
-                  Le bien
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <Label className="text-xs text-muted-foreground">Prix du bien (€)</Label>
-                  <div className="relative flex items-center mt-1.5">
-                    <Input
-                      type="number"
-                      value={prixDisplay}
-                      onChange={e => {
-                        const raw = e.target.value
-                        setPrixDisplay(raw)
-                        const parsed = parseFloat(raw)
-                        if (!isNaN(parsed)) {
-                          handlePrixChange(parsed)
-                        }
-                      }}
-                      onBlur={() => {
-                        if (prixDisplay === '' || isNaN(parseFloat(prixDisplay))) {
-                          setPrixDisplay(String(inputs.prixBien))
-                        }
-                      }}
-                      step={1000}
-                      min={0}
-                      className="pr-8 font-semibold h-11 text-lg"
-                    />
-                    <span className="absolute right-3 text-sm text-muted-foreground pointer-events-none">€</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground/60 mt-1">Champ principal — les autres champs se recalculent automatiquement</p>
-                </div>
-                <Field label="Surface (m²)" value={inputs.surface} onChange={updateField('surface')} suffix="m²" />
-                <Field label="Frais de notaire (€)" value={inputs.fraisNotaire} onChange={updateField('fraisNotaire')} suffix="€" step={100} hint={`~${inputs.prixBien > 0 ? ((inputs.fraisNotaire / inputs.prixBien) * 100).toFixed(1) : '0'}% du prix`} />
-                <Field label="Travaux (€)" value={inputs.travaux} onChange={updateField('travaux')} suffix="€" step={500} />
-                <Field label="Ameublement (€)" value={inputs.ameublement} onChange={updateField('ameublement')} suffix="€" step={100} />
-              </CardContent>
-            </Card>
-
-            {/* Le financement */}
-            <Card className="border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Wallet className="w-4 h-4 text-purple-400" />
-                  Le financement
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
-                <Field
-                  label="Apport (€)"
-                  value={inputs.apport}
-                  onChange={updateField('apport')}
-                  suffix="€"
-                  step={1000}
-                  hint={`${coutTotalInputs > 0 ? ((inputs.apport / coutTotalInputs) * 100).toFixed(1) : '0'}% du coût total`}
-                />
-                <Field label="Taux du crédit (%)" value={inputs.tauxCredit} onChange={updateField('tauxCredit')} suffix="%" step={0.05} />
-                <Field label="Durée du crédit (ans)" value={inputs.dureeCredit} onChange={updateField('dureeCredit')} suffix="ans" min={1} />
-                <Field label="Assurance emprunteur (€/mois)" value={inputs.assuranceEmprunteur} onChange={updateField('assuranceEmprunteur')} suffix="€/mois" step={5} />
-              </CardContent>
-            </Card>
-
-            {/* Les revenus */}
-            <Card className="border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                  Les revenus
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Field
-                  label="Loyer mensuel hors charges (€)"
-                  value={inputs.loyerMensuel}
-                  onChange={updateField('loyerMensuel')}
-                  suffix="€/mois"
-                  step={10}
-                  hint={`Rendement brut indicatif : ${coutTotalInputs > 0 ? ((inputs.loyerMensuel * 12 / coutTotalInputs) * 100).toFixed(2) : '0.00'}%`}
-                />
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Type de location</Label>
-                  <Select value={inputs.locationType} onValueChange={(v) => {
-                    const newType = v as LocationType
-                    setInputs(prev => ({
-                      ...prev,
-                      locationType: newType,
-                      ameublement: newType !== 'nue' ? (prev.ameublement || 5000) : 0,
-                    }))
-                  }}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nue">Location nue</SelectItem>
-                      <SelectItem value="meublee">Location meublée</SelectItem>
-                      <SelectItem value="colocation">Colocation</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Les charges */}
-            <Card className="border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-orange-400" />
-                  Les charges
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-4">
-                <Field label="Taxe foncière (€/an)" value={inputs.taxeFonciere} onChange={updateField('taxeFonciere')} suffix="€/an" step={50} />
-                <Field label="Charges copro (€/mois)" value={inputs.chargesCopro} onChange={updateField('chargesCopro')} suffix="€/mois" step={10} />
-                <Field label="Assurance PNO (€/an)" value={inputs.assurancePNO} onChange={updateField('assurancePNO')} suffix="€/an" step={10} />
-                <Field label="Entretien / imprévus (€/an)" value={inputs.entretien} onChange={updateField('entretien')} suffix="€/an" step={100} />
-                <Field label="Vacance locative (semaines/an)" value={inputs.vacanceLocative} onChange={updateField('vacanceLocative')} suffix="sem." step={1} max={52} />
-                <Field label="Frais de gestion (%)" value={inputs.fraisGestion} onChange={updateField('fraisGestion')} suffix="%" step={0.5} hint="0% = gestion perso" />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right: Results */}
-          <div className="space-y-6">
-            {/* KPI Cards */}
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Indicateurs clés</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <KPICard
-                  title="Rendement brut"
-                  value={formatPercent(results.rendementBrut)}
-                  subtitle="Loyer annuel / coût total"
-                  icon={<TrendingUp className="w-4 h-4" />}
-                  variant={results.rendementBrut >= 6 ? 'positive' : results.rendementBrut >= 4 ? 'warning' : 'negative'}
-                />
-                <KPICard
-                  title="Rendement net"
-                  value={formatPercent(results.rendementNet)}
-                  subtitle="Après charges, avant crédit et impôt"
-                  icon={<TrendingUp className="w-4 h-4" />}
-                  variant={results.rendementNet >= 5 ? 'positive' : results.rendementNet >= 3 ? 'warning' : 'negative'}
-                />
-                <KPICard
-                  title="Cash-flow mensuel"
-                  value={formatEuro(results.cashFlowMensuel)}
-                  subtitle="Avant impôt"
-                  icon={<Wallet className="w-4 h-4" />}
-                  variant={cashFlowVariant}
-                />
-                <KPICard
-                  title="Revenu net"
-                  value={formatEuro(results.revenuNetAnnuel)}
-                  subtitle="Loyer - charges · /an"
-                  icon={<BarChart3 className="w-4 h-4" />}
-                  variant={results.revenuNetAnnuel > 0 ? 'positive' : results.revenuNetAnnuel >= -500 ? 'warning' : 'negative'}
-                />
-              </div>
-            </div>
-
-            {/* Patrimoine chart */}
-            <Card className="border-border/50">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-base">Évolution du patrimoine net</CardTitle>
-                <p className="text-xs text-muted-foreground">Capital restant dû vs valeur du bien sur {inputs.dureeCredit} ans</p>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={results.patrimoineData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="annee" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${v}a`} />
-                    <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `${(v/1000).toFixed(0)}k`} width={45} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 12 }}
-                      formatter={(value: number, name: string) => [formatEuro(value), name === 'patrimoineNet' ? 'Patrimoine net' : 'Capital restant dû']}
-                      labelFormatter={(v) => `Année ${v}`}
-                    />
-                    <Line type="monotone" dataKey="patrimoineNet" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} name="patrimoineNet" />
-                    <Line type="monotone" dataKey="capitalRestantDu" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} name="capitalRestantDu" strokeDasharray="4 4" />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div className="flex items-center gap-4 mt-2 justify-center">
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="w-4 h-0.5 bg-primary rounded" />
-                    Patrimoine net
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <div className="w-4 h-0.5 bg-destructive rounded" />
-                    Capital restant dû
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Details collapsible */}
-            <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-              <Card className="border-border/50">
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="pb-4 cursor-pointer hover:bg-accent/20 rounded-t-lg transition-colors">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Détails du projet</CardTitle>
-                      <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${detailsOpen ? 'rotate-180' : ''}`} />
-                    </div>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent className="space-y-3">
-                    {[
-                      { label: 'Coût total du projet', value: formatEuro(results.coutTotalProjet) },
-                      { label: 'Montant emprunté', value: formatEuro(results.montantEmprunte) },
-                      { label: 'Mensualité de crédit', value: formatEuro(results.mensualiteCredit) + '/mois' },
-                      { label: 'Total des intérêts', value: formatEuro(Math.max(0, results.totalInterets)) },
-                      { label: 'Total charges annuelles', value: formatEuro(results.chargesAnnuelles) },
-                      { label: 'Revenu net d\'exploitation (hors crédit)', value: formatEuro(results.revenuNetAnnuel) },
-                      { label: 'Prix au m²', value: formatEuro(results.prixAuM2) + '/m²' },
-                    ].map(({ label, value }) => (
-                      <div key={label} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
-                        <span className="text-sm text-muted-foreground">{label}</span>
-                        <span className="text-sm font-semibold tabular-nums">{value}</span>
-                      </div>
-                    ))}
-                  </CardContent>
-                </CollapsibleContent>
-              </Card>
-            </Collapsible>
-
-            {/* Summary badges */}
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="text-xs">
-                {inputs.locationType === 'nue' ? '📋 Location nue' : inputs.locationType === 'meublee' ? '🛋️ Location meublée' : '🏠 Colocation'}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                📅 Crédit sur {inputs.dureeCredit} ans
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                📐 {inputs.surface} m²
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Résultats détaillés</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p>Coût total projet : {results.coutTotal.toFixed(0)} €</p>
+          <p>Mensualité crédit : {results.mensualiteCredit.toFixed(0)} €</p>
+          <p>Charges annuelles non récupérables : {((inputs.chargesCopro * 12) + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien).toFixed(0)} €</p>
+          <p>Amortissement bien : {results.amortissementBien.toFixed(0)} € / mois</p>
+          <p>Amortissement mobilier : {results.amortissementMobilier.toFixed(0)} € / mois</p>
+          <p>Cashflow brut (loyer - charges non récup - crédit) : {results.cashFlowBrut.toFixed(0)} € / mois</p>
+          <p>Base imposable LMNP (cashflow fiscal) : {results.baseImposableLMNP.toFixed(0)} € / mois</p>
+          <p>Impôt LMNP : {results.impots.toFixed(0)} € / mois</p>
+          <p>Cashflow net : {results.cashFlowNet.toFixed(0)} € / mois</p>
+        </CardContent>
+      </Card>
     </div>
   )
 }
