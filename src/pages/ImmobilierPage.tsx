@@ -84,8 +84,8 @@ function calculateResults(inputs: SimulatorInputs): SimulatorResults {
   })()
 
   // Charges annuelles
-  const vacanceMensuelle = (inputs.loyerMensuel * (inputs.vacanceLocative / 4)) / 12 // approx
-  const chargesAnn = inputs.chargesCopro * 12 + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien + vacanceMensuelle * 12 + (inputs.loyerMensuel * inputs.fraisGestion / 100)
+  const vacanceMensuelle = (inputs.loyerMensuel * 12 - (inputs.loyerMensuel / 52 * inputs.vacanceLocative)) // approx
+  const chargesAnn = inputs.chargesCopro * 12 + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien + vacanceMensuelle + (inputs.loyerMensuel * inputs.fraisGestion / 100)
   const chargesAnnellesNonRecup = inputs.chargesCopro * 12 + inputs.taxeFonciere + inputs.assurancePNO + inputs.entretien
 
   // Amortissement
