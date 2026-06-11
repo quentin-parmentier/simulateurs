@@ -16,10 +16,13 @@ const baseInputs: SimulatorInputs = {
   locationType: 'meublee',
   taxeFonciere: 1500,
   chargesCopro: 50,
+  chargesCoproRecup: 100,
   assurancePNO: 150,
   entretien: 500,
   vacanceLocative: 2,
   fraisGestion: 0,
+  regimeFiscal: 'lmnp_reel',
+  tmi: 30,
 }
 
 describe('calculateMensualite', () => {
@@ -36,7 +39,6 @@ describe('calculateMensualite', () => {
   })
 
   it('calcule correctement la mensualité', () => {
-    // 100 000€ à 3.25% sur 25 ans
     const mensualite = calculateMensualite(100000, 3.25, 25)
     expect(mensualite).toBeCloseTo(487.32, 0)
   })
@@ -45,16 +47,12 @@ describe('calculateMensualite', () => {
 describe('calculateResults - vacance locative', () => {
   it('vacance 0 semaines : aucun coût de vacance', () => {
     const results = calculateResults({ ...baseInputs, vacanceLocative: 0 })
-    // chargesAnnuelles = taxe + copro*12 + PNO + entretien + vacance + gestion
-    // = 1500 + 600 + 150 + 500 + 0 + 0 = 2750
     expect(results.chargesAnnuelles).toBeCloseTo(2750, 0)
   })
 
   it('vacance 52 semaines : le coût de vacance égale le loyer annuel', () => {
-    const loyerMensuel = baseInputs.loyerMensuel
-    const loyerAnnuel = loyerMensuel * 12
+    const loyerAnnuel = baseInputs.loyerMensuel * 12
     const results = calculateResults({ ...baseInputs, vacanceLocative: 52 })
-    // chargesAnnuelles = 1500 + 600 + 150 + 500 + loyerAnnuel + 0
     const expected = 1500 + 600 + 150 + 500 + loyerAnnuel
     expect(results.chargesAnnuelles).toBeCloseTo(expected, 0)
   })
@@ -62,7 +60,6 @@ describe('calculateResults - vacance locative', () => {
   it('vacance 26 semaines (6 mois) : le coût est la moitié du loyer annuel', () => {
     const loyerAnnuel = baseInputs.loyerMensuel * 12
     const results = calculateResults({ ...baseInputs, vacanceLocative: 26 })
-    // vacanceLocativeCout = loyerAnnuel * 26 / 52 = loyerAnnuel / 2
     const expectedVacance = loyerAnnuel / 2
     const expectedCharges = 1500 + 600 + 150 + 500 + expectedVacance
     expect(results.chargesAnnuelles).toBeCloseTo(expectedCharges, 0)
@@ -81,25 +78,77 @@ describe('calculateResults - vacance locative', () => {
   })
 })
 
-describe('calculateResults - cohérence revenuNet et cashFlow', () => {
-  it('un cashFlow positif implique un revenu net positif', () => {
-    // Avec un loyer très élevé par rapport aux charges et au crédit
-    const inputs: SimulatorInputs = {
-      ...baseInputs,
-      loyerMensuel: 3000,
-      vacanceLocative: 0,
-    }
-    const results = calculateResults(inputs)
-    if (results.cashFlowMensuel > 0) {
-      expect(results.revenuNetAnnuel).toBeGreaterThan(0)
-    }
+describe('calculateResults - fiscalité', () => {
+  it('LMNP réel : base imposable = loyers - charges - amortissements', () => {
+    const results = calculateResults({ ...baseInputs, regimeFiscal: 'lmnp_reel' })
+    const loyerAnnuel = baseInputs.loyerMensuel * 12
+    const amortBien = baseInputs.prixBien * 0.015
+    const amortMobilier = baseInputs.ameublement * 0.15
+    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles - amortBien - amortMobilier)
+    expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
   })
 
-  it('le revenu net annuel correspond au cash-flow mensuel × 12 plus les coûts du crédit', () => {
+  it('Micro-BIC : base imposable = 50% des loyers', () => {
+    const results = calculateResults({ ...baseInputs, regimeFiscal: 'micro_bic' })
+    const expected = baseInputs.loyerMensuel * 12 * 0.50
+    expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
+  })
+
+  it('Réel foncier : base imposable = loyers - charges (pas d\'amortissement)', () => {
+    const results = calculateResults({ ...baseInputs, regimeFiscal: 'reel_foncier', locationType: 'nue', ameublement: 0 })
+    const loyerAnnuel = baseInputs.loyerMensuel * 12
+    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles)
+    expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
+  })
+
+  it('Micro-foncier : base imposable = 70% des loyers', () => {
+    const results = calculateResults({ ...baseInputs, regimeFiscal: 'micro_foncier', locationType: 'nue' })
+    const expected = baseInputs.loyerMensuel * 12 * 0.70
+    expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
+  })
+
+  it('impôts = base imposable × (TMI + 17.2%)', () => {
     const results = calculateResults(baseInputs)
-    // revenuNetAnnuel = cashFlowMensuel * 12 + mensualiteCredit * 12 + assuranceEmprunteur * 12
-    const creditAnnuel = (results.mensualiteCredit + baseInputs.assuranceEmprunteur) * 12
-    expect(results.revenuNetAnnuel).toBeCloseTo(results.cashFlowMensuel * 12 + creditAnnuel, 0)
+    const tauxEffectif = baseInputs.tmi / 100 + 0.172
+    const expected = results.baseImposableAnnuelle * tauxEffectif
+    expect(results.impotsAnnuels).toBeCloseTo(expected, 1)
+  })
+
+  it('TMI 0% : seuls les prélèvements sociaux s\'appliquent', () => {
+    const results = calculateResults({ ...baseInputs, tmi: 0 })
+    const expected = results.baseImposableAnnuelle * 0.172
+    expect(results.impotsAnnuels).toBeCloseTo(expected, 1)
+  })
+})
+
+describe('calculateResults - cash-flow', () => {
+  it('cash-flow brut = loyer - charges mensuelles - crédit', () => {
+    const results = calculateResults(baseInputs)
+    const expected = baseInputs.loyerMensuel - results.chargesNonRecupMensuel - results.mensualiteCredit
+    expect(results.cashFlowBrut).toBeCloseTo(expected, 2)
+  })
+
+  it('cash-flow net = cash-flow brut - impôts mensuels', () => {
+    const results = calculateResults(baseInputs)
+    const expected = results.cashFlowBrut - results.impotsMensuels
+    expect(results.cashFlowNet).toBeCloseTo(expected, 2)
+  })
+
+  it('cash-flow après crédit est supérieur au cash-flow pendant le crédit', () => {
+    const results = calculateResults(baseInputs)
+    expect(results.cashFlowNetApresCredit).toBeGreaterThan(results.cashFlowNet)
+  })
+
+  it('effort épargne = 0 quand cash-flow net positif', () => {
+    const results = calculateResults({ ...baseInputs, loyerMensuel: 5000, vacanceLocative: 0 })
+    expect(results.cashFlowNet).toBeGreaterThan(0)
+    expect(results.effortEpargne).toBe(0)
+  })
+
+  it("effort épargne = -cashFlowNet quand cash-flow net négatif", () => {
+    const results = calculateResults({ ...baseInputs, loyerMensuel: 100 })
+    expect(results.cashFlowNet).toBeLessThan(0)
+    expect(results.effortEpargne).toBeCloseTo(-results.cashFlowNet, 5)
   })
 })
 
@@ -121,25 +170,13 @@ describe('calculateResults - rendements', () => {
     expect(results.rendementNet).toBeCloseTo(expected, 5)
   })
 
-  it('le rendement net peut être positif même si le cash-flow est négatif (financement coûteux)', () => {
-    // Standard property: positive NOI but credit costs make cash-flow negative
-    const results = calculateResults(baseInputs)
-    // revenuNetAnnuel > 0 (property earns more than charges)
-    expect(results.revenuNetAnnuel).toBeGreaterThan(0)
-    // rendementNet is based on NOI, so it should also be positive
-    expect(results.rendementNet).toBeGreaterThan(0)
-    // But cash-flow can still be negative due to credit costs
-    // (this is the key difference vs the old cash-flow-based definition)
-  })
-
   it('les frais de gestion sont calculés sur le loyer effectif (après vacance)', () => {
     const fraisGestion = 8
-    const vacanceLocative = 4 // 4 semaines
+    const vacanceLocative = 4
     const loyerAnnuel = baseInputs.loyerMensuel * 12
     const vacanceLocativeCout = loyerAnnuel * vacanceLocative / 52
     const expectedFraisGestionCout = (loyerAnnuel - vacanceLocativeCout) * fraisGestion / 100
     const results = calculateResults({ ...baseInputs, fraisGestion, vacanceLocative })
-    // chargesAnnuelles = taxe + copro*12 + PNO + entretien + vacance + fraisGestion
     const baseCharges = 1500 + 600 + 150 + 500
     const expectedCharges = baseCharges + vacanceLocativeCout + expectedFraisGestionCout
     expect(results.chargesAnnuelles).toBeCloseTo(expectedCharges, 1)
@@ -153,47 +190,56 @@ describe('calculateResults - rendements', () => {
 })
 
 describe('calculateResults - financement', () => {
-  it('montant emprunté = coût total - apport (minimum 0)', () => {
+  it('capital emprunté = coût total - apport (minimum 0)', () => {
     const results = calculateResults(baseInputs)
     const expected = Math.max(0, results.coutTotalProjet - baseInputs.apport)
-    expect(results.montantEmprunte).toBe(expected)
+    expect(results.capitalEmprunte).toBe(expected)
   })
 
-  it('apport supérieur au coût total : montant emprunté = 0 et mensualité = 0', () => {
+  it('apport supérieur au coût total : capital emprunté = 0 et mensualité = assurance seule', () => {
     const results = calculateResults({ ...baseInputs, apport: 999999 })
-    expect(results.montantEmprunte).toBe(0)
-    expect(results.mensualiteCredit).toBe(0)
-  })
-
-  it('effort épargne = 0 quand cash-flow positif', () => {
-    const results = calculateResults({ ...baseInputs, loyerMensuel: 5000, vacanceLocative: 0 })
-    expect(results.cashFlowMensuel).toBeGreaterThan(0)
-    expect(results.effortEpargne).toBe(0)
-  })
-
-  it("effort épargne = -cashFlow quand cash-flow négatif", () => {
-    const results = calculateResults({ ...baseInputs, loyerMensuel: 100 })
-    expect(results.cashFlowMensuel).toBeLessThan(0)
-    expect(results.effortEpargne).toBeCloseTo(-results.cashFlowMensuel, 5)
+    expect(results.capitalEmprunte).toBe(0)
+    expect(results.mensualiteHorsAssurance).toBe(0)
   })
 })
 
-describe('calculateResults - patrimoine', () => {
-  it('le patrimoine initial (année 0) = prix - montant emprunté', () => {
+describe('calculateResults - timeline étendue', () => {
+  it('la timeline contient dureeCredit + 10 ans de données', () => {
     const results = calculateResults(baseInputs)
-    const expected = baseInputs.prixBien - results.montantEmprunte
-    expect(results.patrimoineData[0].patrimoineNet).toBe(expected)
+    expect(results.timelineData.length).toBe(baseInputs.dureeCredit + 10 + 1)
   })
 
-  it('le capital restant dû à la fin du crédit est 0', () => {
+  it('le capital restant dû à la fin du crédit est proche de 0', () => {
     const results = calculateResults(baseInputs)
-    const dernierPoint = results.patrimoineData[baseInputs.dureeCredit]
-    expect(dernierPoint.capitalRestantDu).toBeLessThanOrEqual(1) // close to 0 due to rounding
+    const pointFinCredit = results.timelineData[baseInputs.dureeCredit]
+    expect(pointFinCredit.capitalRestantDu).toBeLessThanOrEqual(1)
   })
 
   it('le patrimoine net augmente au fil du temps', () => {
     const results = calculateResults(baseInputs)
-    expect(results.patrimoineData[10].patrimoineNet).toBeGreaterThan(results.patrimoineData[0].patrimoineNet)
-    expect(results.patrimoineData[25].patrimoineNet).toBeGreaterThan(results.patrimoineData[10].patrimoineNet)
+    expect(results.timelineData[10].patrimoineNet).toBeGreaterThan(results.timelineData[0].patrimoineNet)
+    expect(results.timelineData[25].patrimoineNet).toBeGreaterThan(results.timelineData[10].patrimoineNet)
+  })
+
+  it('le gain net annuel après crédit est supérieur à pendant le crédit', () => {
+    const results = calculateResults(baseInputs)
+    const gainPendantCredit = results.timelineData[1].gainNetAnnuel
+    const gainApresCredit = results.timelineData[baseInputs.dureeCredit + 1].gainNetAnnuel
+    expect(gainApresCredit).toBeGreaterThan(gainPendantCredit)
+  })
+
+  it('le cash-flow cumulé net croît dans les années après le crédit', () => {
+    const results = calculateResults(baseInputs)
+    const idx = baseInputs.dureeCredit + 5
+    expect(results.timelineData[idx].cashFlowCumulNet).toBeGreaterThan(
+      results.timelineData[baseInputs.dureeCredit].cashFlowCumulNet
+    )
+  })
+
+  it('le coût du crédit cumulé reste stable après la fin du crédit', () => {
+    const results = calculateResults(baseInputs)
+    const coutFinCredit = results.timelineData[baseInputs.dureeCredit].coutCreditCumul
+    const coutApres = results.timelineData[baseInputs.dureeCredit + 5].coutCreditCumul
+    expect(coutApres).toBe(coutFinCredit)
   })
 })
