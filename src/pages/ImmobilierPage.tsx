@@ -8,36 +8,10 @@ import { Separator } from '@/components/ui/separator'
 import { ModeToggle } from '@/components/ModeToggle'
 import { ArrowLeft, Building2, Wallet, TrendingUp, BarChart3, PiggyBank, Home, Info } from 'lucide-react'
 import {
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, LineChart, Line, ReferenceLine, Legend,
 } from 'recharts'
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type LocationType = 'nue' | 'meublee' | 'colocation'
-type RegimeFiscal = 'lmnp_reel' | 'micro_bic' | 'reel_foncier' | 'micro_foncier'
-
-interface SimulatorInputs {
-  prixBien: number
-  surface: number
-  travaux: number
-  ameublement: number
-  fraisNotaire: number
-  apport: number
-  tauxCredit: number
-  dureeCredit: number
-  assuranceEmprunteur: number
-  loyerMensuel: number
-  locationType: LocationType
-  taxeFonciere: number
-  chargesCopro: number        // charges non récupérables (€/mois)
-  chargesCoproRecup: number   // charges récupérables (€/mois)
-  assurancePNO: number        // €/an
-  entretien: number           // €/an
-  vacanceLocative: number     // semaines/an
-  fraisGestion: number        // %
-  regimeFiscal: RegimeFiscal
-  tmi: number                 // tranche marginale d'imposition (%)
-}
+import { calculateResults } from '@/lib/immobilier'
+import type { SimulatorInputs, LocationType } from '@/lib/immobilier'
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
 
@@ -71,139 +45,6 @@ function getDefaults(prix: number, type: LocationType = 'meublee'): SimulatorInp
     fraisGestion: 0,
     regimeFiscal: 'lmnp_reel',
     tmi: 30,
-  }
-}
-
-// ─── Calculations ─────────────────────────────────────────────────────────────
-
-function calculateResults(inputs: SimulatorInputs) {
-  const {
-    prixBien, fraisNotaire, travaux, ameublement, apport,
-    tauxCredit, dureeCredit, assuranceEmprunteur, loyerMensuel,
-    taxeFonciere, chargesCopro, assurancePNO, entretien,
-    vacanceLocative, fraisGestion, regimeFiscal, tmi,
-  } = inputs
-
-  const coutTotal = prixBien + fraisNotaire + travaux + ameublement
-  const capitalEmprunte = Math.max(0, coutTotal - apport)
-
-  // Monthly loan payment (principal + interest, then add insurance separately)
-  const r = tauxCredit / 100 / 12
-  const n = dureeCredit * 12
-  const mensualiteHorsAssurance = capitalEmprunte > 0 && tauxCredit > 0
-    ? (capitalEmprunte * r) / (1 - Math.pow(1 + r, -n))
-    : (n > 0 ? capitalEmprunte / n : 0)
-  const mensualiteCredit = mensualiteHorsAssurance + assuranceEmprunteur
-
-  // Vacancy cost
-  const vacanceSemaines = Math.min(52, Math.max(0, vacanceLocative))
-  const vacanceCout = loyerMensuel * 12 * vacanceSemaines / 52
-  const loyerCollecte = loyerMensuel * 12 - vacanceCout
-  const fraisGestionCout = loyerCollecte * fraisGestion / 100
-
-  // Annual non-recoverable charges (paid by the owner)
-  const chargesNonRecupAnnuel = taxeFonciere + chargesCopro * 12 + assurancePNO + entretien + vacanceCout + fraisGestionCout
-  const chargesNonRecupMensuel = chargesNonRecupAnnuel / 12
-
-  // Gross cash-flow: rent collected minus non-recoverable charges minus loan payment
-  const cashFlowBrut = loyerMensuel - chargesNonRecupMensuel - mensualiteCredit
-
-  // Depreciation (LMNP only)
-  const amortissementBienAnnuel = prixBien * 0.015      // 1.5 %/an
-  const amortissementMobilierAnnuel = ameublement * 0.15 // 15 %/an
-  const amortissementBienMensuel = amortissementBienAnnuel / 12
-  const amortissementMobilierMensuel = amortissementMobilierAnnuel / 12
-
-  // Taxable income per regime
-  const loyerBrut = loyerMensuel * 12
-  let baseImposableAnnuelle = 0
-  let abattement = 0
-  let explicTax = ''
-
-  if (regimeFiscal === 'lmnp_reel') {
-    baseImposableAnnuelle = Math.max(0, loyerBrut - chargesNonRecupAnnuel - amortissementBienAnnuel - amortissementMobilierAnnuel)
-    explicTax = 'Loyers − charges réelles − amortissements (bien + mobilier)'
-  } else if (regimeFiscal === 'micro_bic') {
-    abattement = loyerBrut * 0.50
-    baseImposableAnnuelle = loyerBrut * 0.50
-    explicTax = 'Abattement forfaitaire de 50 % sur les loyers bruts'
-  } else if (regimeFiscal === 'reel_foncier') {
-    baseImposableAnnuelle = Math.max(0, loyerBrut - chargesNonRecupAnnuel)
-    explicTax = 'Loyers − charges réelles (pas d\'amortissement en location nue)'
-  } else {
-    // micro_foncier
-    abattement = loyerBrut * 0.30
-    baseImposableAnnuelle = loyerBrut * 0.70
-    explicTax = 'Abattement forfaitaire de 30 % sur les loyers bruts'
-  }
-
-  // Tax = TMI + social contributions (17.2 %)
-  const tauxEffectif = tmi / 100 + 0.172
-  const impotsAnnuels = baseImposableAnnuelle * tauxEffectif
-  const impotsMensuels = impotsAnnuels / 12
-
-  // Net cash-flow
-  const cashFlowNet = cashFlowBrut - impotsMensuels
-  const effortEpargne = Math.max(0, -cashFlowNet)
-
-  // Yields
-  const rendementBrut = coutTotal > 0 ? (loyerBrut / coutTotal) * 100 : 0
-  const rendementNet = coutTotal > 0 ? ((loyerBrut - chargesNonRecupAnnuel) / coutTotal) * 100 : 0
-
-  // Patrimony over time
-  const patrimoineData: { annee: number; patrimoineNet: number; capitalRestantDu: number }[] = []
-  let capitalRestantDu = capitalEmprunte
-  const tMensuel = tauxCredit / 100 / 12
-  for (let annee = 0; annee <= dureeCredit; annee++) {
-    patrimoineData.push({
-      annee,
-      patrimoineNet: Math.round(prixBien - capitalRestantDu),
-      capitalRestantDu: Math.round(capitalRestantDu),
-    })
-    if (annee < dureeCredit) {
-      for (let mois = 0; mois < 12; mois++) {
-        if (capitalRestantDu <= 0) break
-        const interets = capitalRestantDu * tMensuel
-        const remboursementCapital = mensualiteHorsAssurance - interets
-        capitalRestantDu = Math.max(0, capitalRestantDu - remboursementCapital)
-      }
-    }
-  }
-
-  // Monthly cost breakdown
-  const coutsMensuels = {
-    credit: Math.round(mensualiteCredit * 10) / 10,
-    taxeFonciere: Math.round(taxeFonciere / 12 * 10) / 10,
-    chargesCopro: chargesCopro,
-    assurancePNO: Math.round(assurancePNO / 12 * 10) / 10,
-    entretien: Math.round(entretien / 12 * 10) / 10,
-    vacance: Math.round(vacanceCout / 12 * 10) / 10,
-    fraisGestion: Math.round(fraisGestionCout / 12 * 10) / 10,
-    impots: Math.round(impotsMensuels * 10) / 10,
-  }
-
-  return {
-    coutTotal,
-    capitalEmprunte,
-    mensualiteCredit,
-    chargesNonRecupAnnuel,
-    chargesNonRecupMensuel,
-    amortissementBienMensuel,
-    amortissementMobilierMensuel,
-    baseImposableAnnuelle,
-    baseImposableMensuelle: baseImposableAnnuelle / 12,
-    impotsMensuels,
-    abattement,
-    cashFlowBrut,
-    cashFlowNet,
-    effortEpargne,
-    rendementBrut,
-    rendementNet,
-    explicTax,
-    tauxEffectif: tauxEffectif * 100,
-    patrimoineData,
-    coutsMensuels,
-    loyerBrut,
   }
 }
 
@@ -501,7 +342,7 @@ export default function ImmobilierSimulator() {
                   onChange={updateNum('apport')}
                   suffix="€"
                   step={5000}
-                  hint={`${results.coutTotal > 0 ? ((inputs.apport / results.coutTotal) * 100).toFixed(0) : '0'} % du projet`}
+                  hint={`${results.coutTotalProjet > 0 ? ((inputs.apport / results.coutTotalProjet) * 100).toFixed(0) : '0'} % du projet`}
                 />
                 <Field label="Taux crédit" value={inputs.tauxCredit} onChange={updateNum('tauxCredit')} suffix="%" step={0.1} min={0} />
                 <Field label="Durée crédit" value={inputs.dureeCredit} onChange={updateNum('dureeCredit')} suffix="ans" step={1} min={1} />
@@ -525,7 +366,7 @@ export default function ImmobilierSimulator() {
                     onChange={updateNum('loyerMensuel')}
                     suffix="€/mois"
                     step={50}
-                    hint={`Soit ${results.coutTotal > 0 ? ((inputs.loyerMensuel * 12 / results.coutTotal) * 100).toFixed(2) : '0'} % brut / an`}
+                    hint={`Soit ${results.coutTotalProjet > 0 ? ((inputs.loyerMensuel * 12 / results.coutTotalProjet) * 100).toFixed(2) : '0'} % brut / an`}
                   />
                 </div>
                 <Field
@@ -723,18 +564,18 @@ export default function ImmobilierSimulator() {
                     {(inputs.regimeFiscal === 'lmnp_reel' || inputs.regimeFiscal === 'reel_foncier') && (
                       <div className="flex justify-between text-red-400">
                         <span>− Charges réelles</span>
-                        <span>−{fmt(results.chargesNonRecupAnnuel)}/an</span>
+                        <span>−{fmt(results.chargesAnnuelles)}/an</span>
                       </div>
                     )}
                     {inputs.regimeFiscal === 'lmnp_reel' && (
                       <>
                         <div className="flex justify-between text-red-400">
                           <span>− Amortissement bien</span>
-                          <span>−{fmt(results.amortissementBienMensuel * 12)}/an</span>
+                          <span>−{fmt(results.amortissementBienAnnuel)}/an</span>
                         </div>
                         <div className="flex justify-between text-red-400">
                           <span>− Amortissement mobilier</span>
-                          <span>−{fmt(results.amortissementMobilierMensuel * 12)}/an</span>
+                          <span>−{fmt(results.amortissementMobilierAnnuel)}/an</span>
                         </div>
                       </>
                     )}
@@ -815,12 +656,12 @@ export default function ImmobilierSimulator() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-base">Évolution du patrimoine</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Patrimoine net et capital restant dû sur {inputs.dureeCredit} ans
+                  Patrimoine net et capital restant dû sur {inputs.dureeCredit + 10} ans (crédit + 10 ans après)
                 </p>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={250}>
-                  <AreaChart data={results.patrimoineData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                  <AreaChart data={results.timelineData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis
                       dataKey="annee"
@@ -848,6 +689,7 @@ export default function ImmobilierSimulator() {
                       }}
                       labelFormatter={(v) => `Année ${v}`}
                     />
+                    <ReferenceLine x={inputs.dureeCredit} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
                     <Area
                       type="monotone"
                       dataKey="patrimoineNet"
@@ -882,13 +724,101 @@ export default function ImmobilierSimulator() {
               </CardContent>
             </Card>
 
+            {/* Cash-flow & gains over time */}
+            <Card className="border-border/50">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-base">Cash-flow & rentabilité dans le temps</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Gain net annuel, cash-flow cumulé et coût du crédit — avant et après la fin du prêt
+                </p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={results.timelineData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="annee"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickFormatter={(v) => `${v}a`}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                      width={55}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number, name: string) => {
+                        const labels: Record<string, string> = {
+                          gainNetAnnuel: 'Gain net annuel',
+                          cashFlowCumulNet: 'Cash-flow cumulé net',
+                          coutCreditCumul: 'Coût crédit cumulé',
+                        }
+                        return [fmt(value), labels[name] || name]
+                      }}
+                      labelFormatter={(v) => `Année ${v}`}
+                    />
+                    <Legend
+                      formatter={(value: string) => {
+                        const labels: Record<string, string> = {
+                          gainNetAnnuel: 'Gain net/an',
+                          cashFlowCumulNet: 'Cash-flow cumulé',
+                          coutCreditCumul: 'Coût crédit cumulé',
+                        }
+                        return labels[value] || value
+                      }}
+                      wrapperStyle={{ fontSize: 11 }}
+                    />
+                    <ReferenceLine x={inputs.dureeCredit} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
+                    <Line
+                      type="monotone"
+                      dataKey="gainNetAnnuel"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={false}
+                      name="gainNetAnnuel"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="cashFlowCumulNet"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={false}
+                      name="cashFlowCumulNet"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="coutCreditCumul"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
+                      name="coutCreditCumul"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="mt-3 p-3 bg-muted/20 rounded-lg text-xs text-muted-foreground space-y-1">
+                  <p>📈 <strong>Après la fin du crédit (année {inputs.dureeCredit})</strong> : gain net mensuel de <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit)}</span>/mois soit <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit * 12)}</span>/an</p>
+                  {results.effortEpargne > 0 && (
+                    <p>💰 Effort d'épargne pendant le crédit : <span className="text-orange-400 font-medium">{fmt(results.effortEpargne)}</span>/mois</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Summary badges */}
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="text-xs">
-                🏠 {inputs.surface} m² · {results.coutTotal > 0 && inputs.surface > 0 ? fmt(inputs.prixBien / inputs.surface) : '—'}/m²
+                🏠 {inputs.surface} m² · {results.coutTotalProjet > 0 && inputs.surface > 0 ? fmt(inputs.prixBien / inputs.surface) : '—'}/m²
               </Badge>
               <Badge variant="outline" className="text-xs">
-                💰 Coût total : {fmt(results.coutTotal)}
+                💰 Coût total : {fmt(results.coutTotalProjet)}
               </Badge>
               <Badge variant="outline" className="text-xs">
                 🏦 Emprunté : {fmt(results.capitalEmprunte)}
