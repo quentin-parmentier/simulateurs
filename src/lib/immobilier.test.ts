@@ -30,8 +30,8 @@ describe('calculateMensualite', () => {
     expect(calculateMensualite(0, 3.25, 25)).toBe(0)
   })
 
-  it('retourne 0 si taux est 0', () => {
-    expect(calculateMensualite(100000, 0, 25)).toBe(0)
+  it('retourne capital / (durée × 12) si taux est 0', () => {
+    expect(calculateMensualite(100000, 0, 25)).toBeCloseTo(100000 / (25 * 12), 2)
   })
 
   it('retourne 0 si durée est 0', () => {
@@ -238,8 +238,34 @@ describe('calculateResults - timeline étendue', () => {
 
   it('le coût du crédit cumulé reste stable après la fin du crédit', () => {
     const results = calculateResults(baseInputs)
-    const coutFinCredit = results.timelineData[baseInputs.dureeCredit].coutCreditCumul
-    const coutApres = results.timelineData[baseInputs.dureeCredit + 5].coutCreditCumul
+    const coutFinCredit = results.timelineData[baseInputs.dureeCredit].remboursementsCumules
+    const coutApres = results.timelineData[baseInputs.dureeCredit + 5].remboursementsCumules
     expect(coutApres).toBe(coutFinCredit)
+  })
+
+  it('aucune année post-crédit n\'est traitée comme pendant crédit malgré un résidu flottant', () => {
+    // Use parameters that are likely to produce a floating-point residue
+    const inputs: SimulatorInputs = {
+      ...baseInputs,
+      prixBien: 150000,
+      fraisNotaire: 12000,
+      travaux: 3000,
+      ameublement: 2000,
+      apport: 17000,
+      tauxCredit: 2.75,
+      dureeCredit: 20,
+    }
+    const results = calculateResults(inputs)
+    const duree = inputs.dureeCredit
+
+    // After dureeCredit, remboursementsCumules should not increase
+    for (let i = duree + 1; i < results.timelineData.length; i++) {
+      expect(results.timelineData[i].remboursementsCumules).toBe(
+        results.timelineData[duree].remboursementsCumules
+      )
+    }
+
+    // capitalRestantDu should be exactly 0 at dureeCredit
+    expect(results.timelineData[duree].capitalRestantDu).toBe(0)
   })
 })

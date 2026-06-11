@@ -757,7 +757,7 @@ export default function ImmobilierSimulator() {
                         const labels: Record<string, string> = {
                           gainNetAnnuel: 'Gain net annuel',
                           cashFlowCumulNet: 'Cash-flow cumulé net',
-                          coutCreditCumul: 'Coût crédit cumulé',
+                          coutCreditCumul: 'Remboursements cumulés',
                         }
                         return [fmt(value), labels[name] || name]
                       }}
@@ -768,7 +768,7 @@ export default function ImmobilierSimulator() {
                         const labels: Record<string, string> = {
                           gainNetAnnuel: 'Gain net/an',
                           cashFlowCumulNet: 'Cash-flow cumulé',
-                          coutCreditCumul: 'Coût crédit cumulé',
+                          coutCreditCumul: 'Remboursements cumulés',
                         }
                         return labels[value] || value
                       }}
@@ -794,7 +794,7 @@ export default function ImmobilierSimulator() {
                     />
                     <Line
                       type="monotone"
-                      dataKey="coutCreditCumul"
+                      dataKey="remboursementsCumules"
                       stroke="#ef4444"
                       strokeWidth={2}
                       strokeDasharray="4 4"
