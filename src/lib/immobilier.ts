@@ -25,7 +25,8 @@ export interface SimulatorInputs {
 }
 
 export function calculateMensualite(capital: number, tauxAnnuel: number, dureeAns: number): number {
-  if (capital <= 0 || tauxAnnuel <= 0 || dureeAns <= 0) return 0
+  if (capital <= 0 || dureeAns <= 0) return 0
+  if (tauxAnnuel <= 0) return capital / (dureeAns * 12)
   const t = tauxAnnuel / 100 / 12
   const n = dureeAns * 12
   return (capital * t) / (1 - Math.pow(1 + t, -n))
@@ -36,7 +37,7 @@ export interface TimelinePoint {
   patrimoineNet: number
   capitalRestantDu: number
   cashFlowCumulNet: number
-  coutCreditCumul: number
+  remboursementsCumules: number
   gainNetAnnuel: number
 }
 
@@ -55,11 +56,7 @@ export function calculateResults(inputs: SimulatorInputs) {
   const capitalEmprunte = Math.max(0, coutTotalProjet - apport)
 
   // Monthly loan payment (principal + interest)
-  const r = tauxCredit / 100 / 12
-  const n = dureeCredit * 12
-  const mensualiteHorsAssurance = capitalEmprunte > 0 && tauxCredit > 0
-    ? (capitalEmprunte * r) / (1 - Math.pow(1 + r, -n))
-    : (n > 0 ? capitalEmprunte / n : 0)
+  const mensualiteHorsAssurance = calculateMensualite(capitalEmprunte, tauxCredit, dureeCredit)
   const mensualiteCredit = mensualiteHorsAssurance + assuranceEmprunteur
   const totalInterets = mensualiteHorsAssurance * dureeCredit * 12 - capitalEmprunte
 
@@ -139,10 +136,12 @@ export function calculateResults(inputs: SimulatorInputs) {
   let capitalRestantDu = capitalEmprunte
   const tMensuel = tauxCredit / 100 / 12
   let cashFlowCumulNet = 0
-  let coutCreditCumul = 0
+  let remboursementsCumules = 0
 
   for (let annee = 0; annee <= totalAnnees; annee++) {
-    const pendantCredit = annee <= dureeCredit && capitalRestantDu > 0
+    // Apply epsilon: treat near-zero capital as fully repaid
+    if (capitalRestantDu < 1e-6) capitalRestantDu = 0
+    const pendantCredit = annee < dureeCredit && capitalRestantDu > 0
     const creditMensuel = pendantCredit ? mensualiteCredit : 0
     const gainNetMensuel = pendantCredit ? cashFlowNet : cashFlowNetApresCredit
     const gainNetAnnuel = gainNetMensuel * 12
@@ -152,13 +151,13 @@ export function calculateResults(inputs: SimulatorInputs) {
       patrimoineNet: Math.round(prixBien - capitalRestantDu),
       capitalRestantDu: Math.round(capitalRestantDu),
       cashFlowCumulNet: Math.round(cashFlowCumulNet),
-      coutCreditCumul: Math.round(coutCreditCumul),
+      remboursementsCumules: Math.round(remboursementsCumules),
       gainNetAnnuel: Math.round(gainNetAnnuel),
     })
 
     if (annee < totalAnnees) {
       cashFlowCumulNet += gainNetAnnuel
-      coutCreditCumul += creditMensuel * 12
+      remboursementsCumules += creditMensuel * 12
 
       // Amortize capital for loan years
       if (pendantCredit && annee < dureeCredit) {
