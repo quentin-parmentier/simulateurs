@@ -196,10 +196,11 @@ describe('calculateResults - financement', () => {
     expect(results.capitalEmprunte).toBe(expected)
   })
 
-  it('apport supérieur au coût total : capital emprunté = 0 et mensualité = assurance seule', () => {
+  it('apport supérieur au coût total : capital emprunté = 0, mensualité = 0 (pas d\'assurance sans crédit)', () => {
     const results = calculateResults({ ...baseInputs, apport: 999999 })
     expect(results.capitalEmprunte).toBe(0)
     expect(results.mensualiteHorsAssurance).toBe(0)
+    expect(results.mensualiteCredit).toBe(0)
   })
 })
 
@@ -207,6 +208,12 @@ describe('calculateResults - timeline étendue', () => {
   it('la timeline contient dureeCredit + 10 ans de données', () => {
     const results = calculateResults(baseInputs)
     expect(results.timelineData.length).toBe(baseInputs.dureeCredit + 10 + 1)
+  })
+
+  it('sans crédit : la timeline contient 10 ans de données (dureeEffective = 0)', () => {
+    const results = calculateResults({ ...baseInputs, apport: 999999 })
+    expect(results.dureeEffective).toBe(0)
+    expect(results.timelineData.length).toBe(10 + 1)
   })
 
   it('le capital restant dû à la fin du crédit est proche de 0', () => {
@@ -241,6 +248,25 @@ describe('calculateResults - timeline étendue', () => {
     const coutFinCredit = results.timelineData[baseInputs.dureeCredit].remboursementsCumules
     const coutApres = results.timelineData[baseInputs.dureeCredit + 5].remboursementsCumules
     expect(coutApres).toBe(coutFinCredit)
+  })
+
+  it('gainNetCumulTotal démarre à -apport à l\'année 0', () => {
+    const results = calculateResults(baseInputs)
+    expect(results.timelineData[0].gainNetCumulTotal).toBe(-baseInputs.apport)
+  })
+
+  it('gainNetCumulTotal croît au fil du temps (cashFlow positif)', () => {
+    const results = calculateResults({ ...baseInputs, loyerMensuel: 5000, vacanceLocative: 0 })
+    const t0 = results.timelineData[0].gainNetCumulTotal
+    const t10 = results.timelineData[10].gainNetCumulTotal
+    expect(t10).toBeGreaterThan(t0)
+  })
+
+  it('gainNetCumulTotal = cashFlowCumulNet - apport', () => {
+    const results = calculateResults(baseInputs)
+    for (const point of results.timelineData) {
+      expect(point.gainNetCumulTotal).toBeCloseTo(point.cashFlowCumulNet - baseInputs.apport, 0)
+    }
   })
 
   it('aucune année post-crédit n\'est traitée comme pendant crédit malgré un résidu flottant', () => {
