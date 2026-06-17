@@ -17,7 +17,7 @@ import type { SimulatorInputs, LocationType } from '@/lib/immobilier'
 
 function getDefaults(prix: number, type: LocationType = 'meublee'): SimulatorInputs {
   const surface = Math.round(prix / 2500)
-  const fraisNotaire = Math.round(prix * 0.08)
+  const fraisNotaire = Math.round(prix * 0.076)
   const travaux = 0
   const ameublement = type !== 'nue' ? 5000 : 0
   const coutTotal = prix + fraisNotaire + travaux + ameublement
@@ -169,6 +169,14 @@ export default function ImmobilierSimulator() {
     }))
   }, [])
 
+  const updatePrixBien = useCallback((value: number) => {
+    setInputs(prev => ({
+      ...prev,
+      prixBien: value,
+      fraisNotaire: Math.round(value * 0.076),
+    }))
+  }, [])
+
   // Cost breakdown for the bar chart
   const breakdownItems = [
     { name: 'Crédit', value: results.coutsMensuels.credit, color: '#3b82f6' },
@@ -310,7 +318,7 @@ export default function ImmobilierSimulator() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid grid-cols-2 gap-4">
-                <Field label="Prix d'achat" value={inputs.prixBien} onChange={updateNum('prixBien')} suffix="€" step={5000} />
+                <Field label="Prix d'achat" value={inputs.prixBien} onChange={updatePrixBien} suffix="€" step={5000} />
                 <Field label="Surface" value={inputs.surface} onChange={updateNum('surface')} suffix="m²" />
                 <Field label="Travaux" value={inputs.travaux} onChange={updateNum('travaux')} suffix="€" step={1000} />
                 {inputs.locationType !== 'nue' && (
@@ -689,7 +697,9 @@ export default function ImmobilierSimulator() {
                       }}
                       labelFormatter={(v) => `Année ${v}`}
                     />
-                    <ReferenceLine x={inputs.dureeCredit} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    {results.capitalEmprunte > 0 && (
+                      <ReferenceLine x={results.dureeEffective} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    )}
                     <Area
                       type="monotone"
                       dataKey="patrimoineNet"
@@ -758,23 +768,27 @@ export default function ImmobilierSimulator() {
                           gainNetAnnuel: 'Gain net annuel',
                           cashFlowCumulNet: 'Cash-flow cumulé net',
                           coutCreditCumul: 'Remboursements cumulés',
-                        }
-                        return [fmt(value), labels[name] || name]
-                      }}
-                      labelFormatter={(v) => `Année ${v}`}
+                         gainNetCumulTotal: 'Gain net cumulé total',
+                       }
+                       return [fmt(value), labels[name] || name]
+                     }}
+                     labelFormatter={(v) => `Année ${v}`}
                     />
                     <Legend
-                      formatter={(value: string) => {
-                        const labels: Record<string, string> = {
-                          gainNetAnnuel: 'Gain net/an',
-                          cashFlowCumulNet: 'Cash-flow cumulé',
-                          coutCreditCumul: 'Remboursements cumulés',
-                        }
-                        return labels[value] || value
-                      }}
-                      wrapperStyle={{ fontSize: 11 }}
+                     formatter={(value: string) => {
+                       const labels: Record<string, string> = {
+                         gainNetAnnuel: 'Gain net/an',
+                         cashFlowCumulNet: 'Cash-flow cumulé',
+                         coutCreditCumul: 'Remboursements cumulés',
+                         gainNetCumulTotal: 'Gain net cumulé total',
+                       }
+                       return labels[value] || value
+                     }}
+                     wrapperStyle={{ fontSize: 11 }}
                     />
-                    <ReferenceLine x={inputs.dureeCredit} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    {results.capitalEmprunte > 0 && (
+                     <ReferenceLine x={results.dureeEffective} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    )}
                     <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
                     <Line
                       type="monotone"
@@ -801,10 +815,22 @@ export default function ImmobilierSimulator() {
                       dot={false}
                       name="coutCreditCumul"
                     />
+                    <Line
+                      type="monotone"
+                      dataKey="gainNetCumulTotal"
+                      stroke="#a855f7"
+                      strokeWidth={2}
+                      dot={false}
+                      name="gainNetCumulTotal"
+                    />
                   </LineChart>
                 </ResponsiveContainer>
                 <div className="mt-3 p-3 bg-muted/20 rounded-lg text-xs text-muted-foreground space-y-1">
-                  <p>📈 <strong>Après la fin du crédit (année {inputs.dureeCredit})</strong> : gain net mensuel de <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit)}</span>/mois soit <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit * 12)}</span>/an</p>
+                  {results.capitalEmprunte > 0 ? (
+                    <p>📈 <strong>Après la fin du crédit (année {results.dureeEffective})</strong> : gain net mensuel de <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit)}</span>/mois soit <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit * 12)}</span>/an</p>
+                  ) : (
+                    <p>📈 <strong>Sans crédit</strong> : gain net mensuel de <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit)}</span>/mois soit <span className="text-emerald-400 font-medium">{fmt(results.cashFlowNetApresCredit * 12)}</span>/an</p>
+                  )}
                   {results.effortEpargne > 0 && (
                     <p>💰 Effort d'épargne pendant le crédit : <span className="text-orange-400 font-medium">{fmt(results.effortEpargne)}</span>/mois</p>
                   )}
