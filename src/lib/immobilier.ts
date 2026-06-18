@@ -130,10 +130,10 @@ export function calculateResults(inputs: SimulatorInputs) {
     impots: Math.round(impotsMensuels * 10) / 10,
   }
 
-  // Extended timeline: loan duration + 10 years after
-  const anneesApresCredit = 10
+  // Fixed 35-year timeline
+  const TIMELINE_YEARS = 35
   const dureeEffective = capitalEmprunte > 0 ? dureeCredit : 0
-  const totalAnnees = dureeEffective + anneesApresCredit
+  const totalAnnees = TIMELINE_YEARS
   const timelineData: TimelinePoint[] = []
   let capitalRestantDu = capitalEmprunte
   const tMensuel = tauxCredit / 100 / 12
@@ -205,5 +205,6 @@ export function calculateResults(inputs: SimulatorInputs) {
     coutsMensuels,
     timelineData,
     dureeEffective,
+    coutTotalCredit: capitalEmprunte > 0 ? Math.round(mensualiteCredit * dureeCredit * 12) : 0,
   }
 }

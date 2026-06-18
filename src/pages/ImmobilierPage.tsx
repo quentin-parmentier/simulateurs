@@ -664,7 +664,7 @@ export default function ImmobilierSimulator() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-base">Évolution du patrimoine</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Patrimoine net et capital restant dû sur {inputs.dureeCredit + 10} ans (crédit + 10 ans après)
+                  Patrimoine net et capital restant dû sur 35 ans
                 </p>
               </CardHeader>
               <CardContent>
@@ -768,10 +768,9 @@ export default function ImmobilierSimulator() {
                           gainNetAnnuel: 'Gain net annuel',
                           cashFlowCumulNet: 'Cash-flow cumulé net',
                           coutCreditCumul: 'Remboursements cumulés',
-                         gainNetCumulTotal: 'Gain net cumulé total',
-                       }
-                       return [fmt(value), labels[name] || name]
-                     }}
+                        }
+                        return [fmt(value), labels[name] || name]
+                      }}
                      labelFormatter={(v) => `Année ${v}`}
                     />
                     <Legend
@@ -780,7 +779,6 @@ export default function ImmobilierSimulator() {
                          gainNetAnnuel: 'Gain net/an',
                          cashFlowCumulNet: 'Cash-flow cumulé',
                          coutCreditCumul: 'Remboursements cumulés',
-                         gainNetCumulTotal: 'Gain net cumulé total',
                        }
                        return labels[value] || value
                      }}
@@ -788,6 +786,9 @@ export default function ImmobilierSimulator() {
                     />
                     {results.capitalEmprunte > 0 && (
                      <ReferenceLine x={results.dureeEffective} stroke="#f59e0b" strokeDasharray="3 3" label={{ value: 'Fin crédit', fontSize: 10, fill: '#f59e0b' }} />
+                    )}
+                    {results.coutTotalCredit > 0 && (
+                      <ReferenceLine y={results.coutTotalCredit} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'Coût crédit', fontSize: 10, fill: '#ef4444', position: 'insideTopRight' }} />
                     )}
                     <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
                     <Line
@@ -814,14 +815,6 @@ export default function ImmobilierSimulator() {
                       strokeDasharray="4 4"
                       dot={false}
                       name="coutCreditCumul"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="gainNetCumulTotal"
-                      stroke="#a855f7"
-                      strokeWidth={2}
-                      dot={false}
-                      name="gainNetCumulTotal"
                     />
                   </LineChart>
                 </ResponsiveContainer>
