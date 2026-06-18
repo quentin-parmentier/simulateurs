@@ -205,15 +205,15 @@ describe('calculateResults - financement', () => {
 })
 
 describe('calculateResults - timeline étendue', () => {
-  it('la timeline contient dureeCredit + 10 ans de données', () => {
+  it('la timeline contient toujours 35 ans de données', () => {
     const results = calculateResults(baseInputs)
-    expect(results.timelineData.length).toBe(baseInputs.dureeCredit + 10 + 1)
+    expect(results.timelineData.length).toBe(35 + 1)
   })
 
-  it('sans crédit : la timeline contient 10 ans de données (dureeEffective = 0)', () => {
+  it('sans crédit : la timeline contient toujours 35 ans de données', () => {
     const results = calculateResults({ ...baseInputs, apport: 999999 })
     expect(results.dureeEffective).toBe(0)
-    expect(results.timelineData.length).toBe(10 + 1)
+    expect(results.timelineData.length).toBe(35 + 1)
   })
 
   it('le capital restant dû à la fin du crédit est proche de 0', () => {
