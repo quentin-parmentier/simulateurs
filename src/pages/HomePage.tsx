@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ModeToggle } from '@/components/ModeToggle'
-import { Building2, TrendingUp, ArrowRight } from 'lucide-react'
+import { Building2, TrendingUp, ArrowRight, BarChart3 } from 'lucide-react'
 
 const simulators = [
   {
@@ -27,6 +27,18 @@ const simulators = [
     badgeVariant: 'default' as const,
     color: 'from-emerald-500/20 to-teal-500/20',
     iconColor: 'text-emerald-400',
+    disabled: false,
+  },
+  {
+    id: 'investissement',
+    path: '/investissement',
+    icon: BarChart3,
+    title: 'Investissement Bourse / Immo',
+    description: "Comparez et simulez votre patrimoine selon le mode d'investissement : bourse (versements mensuels + intérêts composés) ou immobilier (prix du bien + rendement net, en tenant compte de la part appartenant à la banque).",
+    badge: 'Nouveau',
+    badgeVariant: 'default' as const,
+    color: 'from-violet-500/20 to-purple-500/20',
+    iconColor: 'text-violet-400',
     disabled: false,
   },
 ]

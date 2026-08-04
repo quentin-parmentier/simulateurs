@@ -3,6 +3,7 @@ import { ThemeProvider } from './components/theme-provider'
 import HomePage from './pages/HomePage'
 import ImmobilierPage from './pages/ImmobilierPage'
 import BoursePage from './pages/BoursePage'
+import InvestissementPage from './pages/InvestissementPage'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/immobilier" element={<ImmobilierPage />} />
           <Route path="/bourse" element={<BoursePage />} />
+          <Route path="/investissement" element={<InvestissementPage />} />
         </Routes>
       </BrowserRouter>
     </ThemeProvider>
