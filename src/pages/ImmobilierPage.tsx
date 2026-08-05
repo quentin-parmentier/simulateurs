@@ -575,6 +575,12 @@ export default function ImmobilierSimulator() {
                         <span>−{fmt(results.chargesAnnuelles)}/an</span>
                       </div>
                     )}
+                    {(inputs.regimeFiscal === 'lmnp_reel' || inputs.regimeFiscal === 'reel_foncier') && results.interetsAnnuels > 0 && (
+                      <div className="flex justify-between text-red-400">
+                        <span>− Intérêts d'emprunt</span>
+                        <span>−{fmt(results.interetsAnnuels)}/an</span>
+                      </div>
+                    )}
                     {inputs.regimeFiscal === 'lmnp_reel' && (
                       <>
                         <div className="flex justify-between text-red-400">

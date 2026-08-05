@@ -79,12 +79,12 @@ describe('calculateResults - vacance locative', () => {
 })
 
 describe('calculateResults - fiscalité', () => {
-  it('LMNP réel : base imposable = loyers - charges - amortissements', () => {
+  it('LMNP réel : base imposable = loyers - charges - intérêts d\'emprunt - amortissements', () => {
     const results = calculateResults({ ...baseInputs, regimeFiscal: 'lmnp_reel' })
     const loyerAnnuel = baseInputs.loyerMensuel * 12
     const amortBien = baseInputs.prixBien * 0.015
     const amortMobilier = baseInputs.ameublement * 0.15
-    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles - amortBien - amortMobilier)
+    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles - results.interetsAnnuels - amortBien - amortMobilier)
     expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
   })
 
@@ -94,10 +94,10 @@ describe('calculateResults - fiscalité', () => {
     expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
   })
 
-  it('Réel foncier : base imposable = loyers - charges (pas d\'amortissement)', () => {
+  it('Réel foncier : base imposable = loyers - charges - intérêts d\'emprunt (pas d\'amortissement)', () => {
     const results = calculateResults({ ...baseInputs, regimeFiscal: 'reel_foncier', locationType: 'nue', ameublement: 0 })
     const loyerAnnuel = baseInputs.loyerMensuel * 12
-    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles)
+    const expected = Math.max(0, loyerAnnuel - results.chargesAnnuelles - results.interetsAnnuels)
     expect(results.baseImposableAnnuelle).toBeCloseTo(expected, 1)
   })
 
