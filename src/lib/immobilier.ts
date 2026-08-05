@@ -61,6 +61,18 @@ export function calculateResults(inputs: SimulatorInputs) {
   const mensualiteCredit = capitalEmprunte > 0 ? mensualiteHorsAssurance + assuranceEmprunteur : 0
   const totalInterets = mensualiteHorsAssurance * dureeCredit * 12 - capitalEmprunte
 
+  // First-year loan interest (deductible for lmnp_reel and reel_foncier)
+  const tMensuel = tauxCredit / 100 / 12
+  let interetsAnnuels = 0
+  if (capitalEmprunte > 0 && tMensuel > 0) {
+    let cap = capitalEmprunte
+    for (let mois = 0; mois < 12; mois++) {
+      const interetsMois = cap * tMensuel
+      interetsAnnuels += interetsMois
+      cap -= mensualiteHorsAssurance - interetsMois
+    }
+  }
+
   // Vacancy cost
   const loyerAnnuel = loyerMensuel * 12
   const vacanceLocativeCout = loyerAnnuel * vacanceLocative / 52
@@ -76,20 +88,21 @@ export function calculateResults(inputs: SimulatorInputs) {
   const amortissementMobilierAnnuel = ameublement * 0.15
 
   // Taxable income per regime
+  // For lmnp_reel and reel_foncier, loan interest is deductible (intérêts d'emprunt)
   let baseImposableAnnuelle = 0
   let abattement = 0
   let explicTax = ''
 
   if (regimeFiscal === 'lmnp_reel') {
-    baseImposableAnnuelle = Math.max(0, loyerAnnuel - chargesAnnuelles - amortissementBienAnnuel - amortissementMobilierAnnuel)
-    explicTax = 'Loyers − charges réelles − amortissements (bien + mobilier)'
+    baseImposableAnnuelle = Math.max(0, loyerAnnuel - chargesAnnuelles - interetsAnnuels - amortissementBienAnnuel - amortissementMobilierAnnuel)
+    explicTax = 'Loyers − charges réelles − intérêts d\'emprunt − amortissements (bien + mobilier)'
   } else if (regimeFiscal === 'micro_bic') {
     abattement = loyerAnnuel * 0.50
     baseImposableAnnuelle = loyerAnnuel * 0.50
     explicTax = 'Abattement forfaitaire de 50 % sur les loyers bruts'
   } else if (regimeFiscal === 'reel_foncier') {
-    baseImposableAnnuelle = Math.max(0, loyerAnnuel - chargesAnnuelles)
-    explicTax = "Loyers − charges réelles (pas d'amortissement en location nue)"
+    baseImposableAnnuelle = Math.max(0, loyerAnnuel - chargesAnnuelles - interetsAnnuels)
+    explicTax = "Loyers − charges réelles − intérêts d'emprunt (pas d'amortissement en location nue)"
   } else {
     // micro_foncier
     abattement = loyerAnnuel * 0.30
@@ -136,7 +149,6 @@ export function calculateResults(inputs: SimulatorInputs) {
   const totalAnnees = TIMELINE_YEARS
   const timelineData: TimelinePoint[] = []
   let capitalRestantDu = capitalEmprunte
-  const tMensuel = tauxCredit / 100 / 12
   let cashFlowCumulNet = 0
   let remboursementsCumules = 0
   let gainNetCumulTotal = -apport
@@ -196,6 +208,7 @@ export function calculateResults(inputs: SimulatorInputs) {
     baseImposableMensuelle: baseImposableAnnuelle / 12,
     amortissementBienAnnuel,
     amortissementMobilierAnnuel,
+    interetsAnnuels,
     impotsAnnuels,
     impotsMensuels,
     abattement,
